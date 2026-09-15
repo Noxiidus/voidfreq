@@ -1,6 +1,6 @@
 # VoidFreq Roadmap
 
-> Current version: **v0.7.0** — 40 Python files, ~9800 lines, 202 unit tests, CI pipeline active.
+> Current version: **v0.8.0** — 44 Python files, ~11600 lines, 269 unit tests, CI pipeline active.
 
 ---
 
@@ -38,7 +38,7 @@
 - Auto-cleanup (MAC, hostname, routes, iptables restore)
 
 **Infrastructure:**
-- CLI with 22 subcommands (including `doctor`, `check`, `wps`, `proxy`, `karma`, `osint`, `pmf`, `wpa3`, `enterprise`)
+- CLI with 25 subcommands (including `doctor`, `check`, `wps`, `proxy`, `karma`, `osint`, `pmf`, `wpa3`, `enterprise`, `bt`, `plugin`, `tui`)
 - YAML config with 4 stealth profiles (low/medium/high/ghost)
 - Config validation with clear error messages
 - Session management (save/resume/export pentest sessions)
@@ -46,7 +46,7 @@
 - Central subprocess runner with logging, timeout, and error reporting
 - `--verbose` / `--quiet` CLI flags for console output level
 - Doctor mode (tool versions, WiFi interfaces, kernel modules, Python packages, feature map)
-- 202 unit tests (all modules, CLI, report, captive portal, config, integration tests)
+- 269 unit tests (all modules, CLI, report, captive portal, config, integration tests)
 - GitHub Actions CI (ruff lint + pytest on Python 3.11/3.12/3.13)
 - pyproject.toml with `[dev]` extras
 - Markdown/JSON report generation
@@ -191,39 +191,39 @@ Priority: support modern WiFi security standards.
 
 ---
 
-## Phase 3: Advanced Features (v0.8.0)
+## Phase 3: Advanced Features (v0.8.0) — DONE
 
 Priority: extend beyond WiFi into broader wireless and network features.
 
 ### Bluetooth recon module
-- [ ] BLE device scanning (hcitool/bluetoothctl)
-- [ ] Bluetooth Classic device enumeration
-- [ ] BLE GATT service enumeration
-- [ ] Known vulnerable device detection (by OUI/service UUID)
-- [ ] Bluetooth proximity tracking
+- [x] BLE device scanning (hcitool/bluetoothctl with fallback)
+- [x] Bluetooth Classic device enumeration (hcitool scan + sdptool)
+- [x] BLE GATT service enumeration (gatttool --primary)
+- [x] Known vulnerable device detection (by OUI/service UUID databases)
+- [x] Bluetooth proximity tracking (RSSI → distance estimation)
 
 ### Plugin system
-- [ ] Plugin discovery from `~/.voidfreq/plugins/` directory
-- [ ] Plugin YAML manifest (name, version, commands, dependencies)
-- [ ] Plugin lifecycle hooks (pre_operation, post_operation, on_alert)
-- [ ] Built-in plugin: custom deauth patterns
-- [ ] Built-in plugin: MAC vendor database update
+- [x] Plugin discovery from `~/.voidfreq/plugins/` directory
+- [x] Plugin YAML manifest (name, version, commands, dependencies)
+- [x] Plugin lifecycle hooks (pre_operation, post_operation, on_alert, on_capture, on_crack)
+- [x] Dynamic module loading with dependency checking
+- [x] Plugin CLI commands (`voidfreq plugin list`, `voidfreq plugin run`)
 
 ### Webhook & Discord alerts
-- [ ] Webhook URL config for monitor module alerts
-- [ ] Discord bot integration (alert channel, threat notifications)
-- [ ] Slack webhook support
-- [ ] Telegram bot support
-- [ ] Alert severity filtering (only send high-confidence threats)
-- [ ] Rate limiting to avoid alert fatigue
+- [x] Generic webhook URL delivery with JSON payload
+- [x] Discord embed notifications (color-coded severity, fields)
+- [x] Slack webhook support (emoji + markdown formatting)
+- [x] Telegram bot support (Markdown messages via Bot API)
+- [x] Alert severity filtering (INFO/WARNING/CRITICAL threshold)
+- [x] Rate limiting with dedup key per channel/type/source
 
 ### Interactive TUI mode
-- [ ] Full-screen terminal UI with Textual library
-- [ ] Real-time AP list with signal strength bars
-- [ ] Point-and-click target selection
-- [ ] Live attack progress visualization
-- [ ] Split-pane: attack on left, monitor on right
-- [ ] Keyboard shortcuts for common operations
+- [x] Full-screen terminal UI with Textual library (optional [tui] extra)
+- [x] Real-time AP list with signal strength bars
+- [x] Point-and-click target selection via DataTable cursor
+- [x] Attack status panel and alert log panel
+- [x] Grid layout: AP list + attack panel on top, alerts on bottom
+- [x] Keyboard shortcuts (s=scan, a=attack, m=monitor, r=refresh, q=quit)
 
 ---
 
@@ -282,7 +282,9 @@ voidfreq/
 │   ├── logger.py       # Centralized file logger (~/.voidfreq/logs/)
 │   ├── opsec.py        # OpsecEngine: MAC rotation, hostname spoof, jitter, cleanup
 │   ├── session.py      # SessionManager: save/resume/export pentest sessions as JSON
-│   └── threat.py       # ThreatDetector: IDS port scan, enterprise AP detection, kill switch
+│   ├── threat.py       # ThreatDetector: IDS port scan, enterprise AP detection, kill switch
+│   ├── alerts.py       # AlertManager: Discord/Slack/Telegram/webhook delivery, rate limiting
+│   └── plugins.py      # PluginManager: YAML manifest discovery, lifecycle hooks, dynamic loading
 ├── modules/            # Feature modules (each is standalone with config + opsec injection)
 │   ├── analyzer.py     # PcapAnalyzer: offline tshark-based capture analysis
 │   ├── attack.py       # AttackModule: PMKID/handshake capture, hashcat/aircrack cracking
@@ -300,12 +302,14 @@ voidfreq/
 │   ├── wordlist.py     # WordlistGenerator: ESSID-based with leet/years/patterns/walks
 │   ├── wpa3.py         # Wpa3Module: SAE detection, Dragonblood attacks, transition downgrade
 │   ├── enterprise.py   # EnterpriseModule: EAP detection, hostapd-wpe evil twin, GTC downgrade
+│   ├── bluetooth.py    # BluetoothModule: BLE/Classic scan, GATT enum, vuln detection, proximity
 │   └── wps.py          # WpsModule: wash scan, Pixie Dust (reaver/bully), PIN brute-force
 ├── utils/
 │   ├── deps.py         # check_dependencies() + doctor() full system diagnostic
 │   └── report.py       # Markdown/JSON pentest report generation
-├── cli.py              # argparse CLI, 20 subcommands, banner, command dispatch
-└── __init__.py         # __version__ = "0.7.0", __author__ = "Noxiidus"
+├── cli.py              # argparse CLI, 25 subcommands, banner, command dispatch
+├── tui.py              # Interactive TUI: Textual full-screen UI with AP list, attack, alerts
+└── __init__.py         # __version__ = "0.8.0", __author__ = "Noxiidus"
 ```
 
 ### Key patterns
