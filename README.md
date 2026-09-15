@@ -246,8 +246,9 @@ sudo voidfreq auto -t <BSSID> -ch 6 -s ghost
 ```
 voidfreq/
 ├── core/
-│   ├── config.py      # YAML config loader, stealth profiles
+│   ├── config.py      # YAML config loader, stealth profiles, validation
 │   ├── interface.py   # Monitor mode, channel control, TX power
+│   ├── logger.py      # Centralized file logging
 │   ├── opsec.py       # MAC rotation, hostname spoof, jitter, cleanup
 │   ├── session.py     # Save/resume pentest sessions
 │   └── threat.py      # IDS/WIDS detection, kill switch
@@ -264,7 +265,7 @@ voidfreq/
 │   ├── wordlist.py    # ESSID-based wordlist generator
 │   └── analyzer.py    # Offline pcap capture analysis
 ├── utils/
-│   ├── deps.py        # Dependency checker
+│   ├── deps.py        # Dependency checker + doctor mode
 │   └── report.py      # Markdown/JSON report generator
 └── cli.py             # CLI entry point with Rich TUI
 ```
