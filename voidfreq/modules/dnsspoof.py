@@ -12,9 +12,11 @@ from rich.console import Console
 from rich.table import Table
 
 from ..core.config import Config
+from ..core.logger import get_logger
 from ..core.opsec import OpsecEngine
 
 console = Console()
+log = get_logger("dnsspoof")
 
 
 @dataclass
@@ -88,6 +90,7 @@ class DnsSpoofModule:
         )
         monitor_thread.start()
 
+        log.info("DNS spoofing active: %d rules on %s", len(self.rules), interface)
         console.print(f"[green]DNS spoofing active — {len(self.rules)} rules[/green]")
         return True
 

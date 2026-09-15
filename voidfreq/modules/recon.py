@@ -13,9 +13,11 @@ from rich.console import Console
 from rich.table import Table
 
 from ..core.config import Config
+from ..core.logger import get_logger
 from ..core.opsec import OpsecEngine
 
 console = Console()
+log = get_logger("recon")
 
 
 @dataclass
@@ -46,6 +48,7 @@ class ReconModule:
 
     def scan(self, interface: str, duration: int = 30) -> list[AccessPoint]:
         console.print(f"[cyan]Scanning for {duration}s on {interface}...[/cyan]")
+        log.info("Starting recon scan: interface=%s, duration=%ds", interface, duration)
         self.opsec.pre_operation()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -71,6 +74,7 @@ class ReconModule:
 
         self._resolve_vendors()
         self._display_results()
+        log.info("Recon complete: %d APs, %d clients", len(self.access_points), len(self.clients))
         return self.access_points
 
     def _parse_airodump_csv(self, path: str) -> None:

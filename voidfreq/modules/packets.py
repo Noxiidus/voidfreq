@@ -10,7 +10,10 @@ from dataclasses import dataclass
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
+from ..core.logger import get_logger
+
 console = Console()
+log = get_logger("packets")
 
 try:
     from scapy.all import (

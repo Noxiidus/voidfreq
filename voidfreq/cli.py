@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import signal
 import sys
 import threading
@@ -60,12 +61,32 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="voidfreq",
         description="WiFi Red/Blue Team Framework",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""\
+examples:
+  voidfreq recon -d 60                              # Scan for 60 seconds
+  voidfreq attack -t AA:BB:CC:DD:EE:FF -ch 6       # Capture + crack
+  voidfreq scan -t 192.168.1.0/24 --discover        # Host discovery
+  voidfreq mitm -t 192.168.1.5 -g 192.168.1.1       # ARP spoof MITM
+  voidfreq wps pixie -t AA:BB:CC:DD:EE:FF -ch 6     # WPS Pixie Dust
+  voidfreq proxy --dashboard                         # HTTPS proxy
+  voidfreq karma -ch 6 --captive                     # Karma with portal
+  voidfreq osint -t AA:BB:CC:DD:EE:FF -e TestNet    # Passive OSINT
+  voidfreq monitor --dashboard                       # Blue team monitor
+  voidfreq -v attack -t ... -ch 6 --pmf-check        # Verbose + PMF check
+  voidfreq doctor                                    # System diagnostic
+""",
     )
     parser.add_argument("-V", "--version", action="version", version=f"voidfreq {__version__}")
     parser.add_argument("-c", "--config", default="config.yaml", help="Config file path")
     parser.add_argument("-i", "--interface", help="WiFi interface override")
     parser.add_argument("-s", "--stealth", choices=["low", "medium", "high", "ghost"],
                         help="Stealth level override")
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument("-v", "--verbose", action="store_true",
+                           help="Verbose console output (DEBUG level)")
+    verbosity.add_argument("-q", "--quiet", action="store_true",
+                           help="Quiet mode — only warnings and errors on console")
 
     sub = parser.add_subparsers(dest="command")
 
@@ -715,6 +736,13 @@ def main() -> None:
     args = parser.parse_args()
 
     print_banner()
+
+    if args.verbose:
+        from .core.logger import set_console_level
+        set_console_level(logging.DEBUG)
+    elif args.quiet:
+        from .core.logger import set_console_level
+        set_console_level(logging.WARNING)
 
     config = load_config(args.config)
 

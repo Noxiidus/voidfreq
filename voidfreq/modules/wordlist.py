@@ -9,7 +9,10 @@ from dataclasses import dataclass
 from rich.console import Console
 from rich.progress import Progress
 
+from ..core.logger import get_logger
+
 console = Console()
+log = get_logger("wordlist")
 
 COMMON_SUFFIXES = [
     "", "1", "12", "123", "1234", "12345", "123456",

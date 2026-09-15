@@ -12,9 +12,11 @@ from dataclasses import dataclass
 from rich.console import Console
 
 from ..core.config import Config
+from ..core.logger import get_logger
 from ..core.opsec import OpsecEngine
 
 console = Console()
+log = get_logger("eviltwin")
 
 
 @dataclass
@@ -44,6 +46,8 @@ class EvilTwinModule:
 
     def start(self, twin_config: EvilTwinConfig) -> bool:
         console.print(f"[cyan]Starting Evil Twin: \"{twin_config.essid}\" on ch{twin_config.channel}[/cyan]")
+        log.info("Starting Evil Twin: essid=%s, channel=%d, interface=%s",
+                 twin_config.essid, twin_config.channel, twin_config.interface)
         self.opsec.pre_operation()
 
         self._tmpdir = tempfile.TemporaryDirectory(prefix="voidfreq_et_")
@@ -78,6 +82,7 @@ class EvilTwinModule:
         return True
 
     def stop(self) -> None:
+        log.info("Shutting down Evil Twin")
         console.print("[yellow]Shutting down Evil Twin...[/yellow]")
 
         for proc in self._procs:

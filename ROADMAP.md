@@ -1,10 +1,10 @@
 # VoidFreq Roadmap
 
-> Current version: **v0.5.0** — 36 Python files, ~7500 lines, 55 unit tests, CI pipeline active.
+> Current version: **v0.6.0** — 37 Python files, ~8200 lines, 165 unit tests, CI pipeline active.
 
 ---
 
-## Current State (v0.5.0)
+## Current State (v0.6.0)
 
 ### What's done and working
 
@@ -42,12 +42,16 @@
 - YAML config with 4 stealth profiles (low/medium/high/ghost)
 - Config validation with clear error messages
 - Session management (save/resume/export pentest sessions)
-- Centralized file logging (`~/.voidfreq/logs/voidfreq.log`)
+- Centralized file logging with rotation (`~/.voidfreq/logs/voidfreq.log`, 10MB/5 backups)
+- Central subprocess runner with logging, timeout, and error reporting
+- `--verbose` / `--quiet` CLI flags for console output level
 - Doctor mode (tool versions, WiFi interfaces, kernel modules, Python packages, feature map)
-- 55 unit tests (config, session, opsec, wordlist, deps, logger)
+- 165 unit tests (all modules, CLI, report, captive portal, config, integration tests)
 - GitHub Actions CI (ruff lint + pytest on Python 3.11/3.12/3.13)
 - pyproject.toml with `[dev]` extras
 - Markdown/JSON report generation
+- Config schema documentation (`docs/config-schema.md`)
+- Lab setup guide (`docs/lab-setup.md`)
 
 ---
 
@@ -83,7 +87,7 @@ Priority: expand attack surface and detection capabilities.
 
 ---
 
-## Phase 1: Hardening (v0.4.0) — DONE
+## Phase 1: Hardening (v0.6.0) — DONE
 
 Priority: make existing features bullet-proof.
 
@@ -102,30 +106,30 @@ Priority: make existing features bullet-proof.
 - [x] MITM module now initializes _arp_proc1/_arp_proc2 in __init__
 - [x] Report format validation now accepts "both"
 - [x] Wordlist year range extended to 2018–2027
-- [ ] Wrap all `subprocess.run` calls through a central runner with logging, timeout, and error reporting
+- [x] Wrap all `subprocess.run` calls through a central runner with logging, timeout, and error reporting
 
 ### Testing
-- [ ] Integration tests with mock subprocess calls for attack/recon/scan/mitm modules
-- [ ] Test CLI argument parsing and command dispatch
-- [ ] Test report generation (markdown + JSON output)
-- [ ] Test captive portal HTTP server (start/stop/credential capture)
-- [ ] Test config edge cases (missing profiles, partial configs)
-- [ ] Coverage target: 80%+
+- [x] Integration tests with mock subprocess calls for attack/recon/scan/mitm modules
+- [x] Test CLI argument parsing and command dispatch
+- [x] Test report generation (markdown + JSON output)
+- [x] Test captive portal HTTP server (start/stop/credential capture)
+- [x] Test config edge cases (missing profiles, partial configs)
+- [x] Coverage target: 80%+
 
 ### Logging
-- [ ] Add logging to all modules (currently only opsec + threat have it)
-- [ ] Log rotation (max 10MB per file, keep 5 rotated files)
-- [ ] `--verbose` / `--quiet` CLI flags for console output level
-- [ ] Log all subprocess commands and their exit codes
+- [x] Add logging to all modules (all 19 modules now have get_logger)
+- [x] Log rotation (max 10MB per file, keep 5 rotated files)
+- [x] `--verbose` / `--quiet` CLI flags for console output level
+- [x] Log all subprocess commands and their exit codes (via central runner)
 
 ### Documentation
-- [ ] Man page or `--help` improvements with examples per command
-- [ ] `config.yaml` schema documentation (all keys, types, defaults, valid values)
-- [ ] Lab setup guide with specific hardware recommendations and step-by-step
+- [x] `--help` improvements with examples per command (epilog on main parser)
+- [x] `config.yaml` schema documentation (docs/config-schema.md)
+- [x] Lab setup guide with specific hardware recommendations and step-by-step (docs/lab-setup.md)
 
 ---
 
-## Phase 2: Protocol Coverage (v0.5.0)
+## Phase 2: Protocol Coverage (v0.7.0)
 
 Priority: support modern WiFi security standards.
 
@@ -262,8 +266,8 @@ voidfreq/
 ├── utils/
 │   ├── deps.py         # check_dependencies() + doctor() full system diagnostic
 │   └── report.py       # Markdown/JSON pentest report generation
-├── cli.py              # argparse CLI, 15 subcommands, banner, command dispatch
-└── __init__.py         # __version__ = "0.4.0", __author__ = "Noxiidus"
+├── cli.py              # argparse CLI, 20 subcommands, banner, command dispatch
+└── __init__.py         # __version__ = "0.6.0", __author__ = "Noxiidus"
 ```
 
 ### Key patterns

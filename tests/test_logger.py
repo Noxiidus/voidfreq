@@ -1,8 +1,14 @@
-"""Tests for logger setup."""
+"""Tests for logger setup — rotation and console level."""
 
 import logging
+from logging.handlers import RotatingFileHandler
 
-from voidfreq.core.logger import get_logger
+from voidfreq.core.logger import (
+    BACKUP_COUNT,
+    MAX_BYTES,
+    get_logger,
+    set_console_level,
+)
 
 
 def test_get_logger_returns_logger():
@@ -27,3 +33,37 @@ def test_get_logger_idempotent():
 def test_get_logger_no_propagate():
     logger = get_logger("test_propagate")
     assert logger.propagate is False
+
+
+def test_rotating_handler():
+    logger = get_logger("test_rotate")
+    file_handlers = [h for h in logger.handlers if isinstance(h, RotatingFileHandler)]
+    assert len(file_handlers) == 1
+    rh = file_handlers[0]
+    assert rh.maxBytes == MAX_BYTES
+    assert rh.backupCount == BACKUP_COUNT
+
+
+def test_set_console_level_debug():
+    set_console_level(logging.DEBUG)
+    root = logging.getLogger("voidfreq")
+    stream_handlers = [h for h in root.handlers if isinstance(h, logging.StreamHandler)
+                       and not isinstance(h, RotatingFileHandler)]
+    assert len(stream_handlers) >= 1
+    assert stream_handlers[-1].level == logging.DEBUG
+
+
+def test_set_console_level_warning():
+    set_console_level(logging.WARNING)
+    root = logging.getLogger("voidfreq")
+    stream_handlers = [h for h in root.handlers if isinstance(h, logging.StreamHandler)
+                       and not isinstance(h, RotatingFileHandler)]
+    assert stream_handlers[-1].level == logging.WARNING
+
+
+def test_max_bytes_value():
+    assert MAX_BYTES == 10 * 1024 * 1024
+
+
+def test_backup_count_value():
+    assert BACKUP_COUNT == 5

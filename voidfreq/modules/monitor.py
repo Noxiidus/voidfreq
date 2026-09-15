@@ -15,8 +15,10 @@ from rich.table import Table
 from rich.text import Text
 
 from ..core.config import Config
+from ..core.logger import get_logger
 
 console = Console()
+log = get_logger("monitor")
 
 
 @dataclass
@@ -38,6 +40,7 @@ class MonitorModule:
         self._threads: list[threading.Thread] = []
 
     def start(self, interface: str) -> None:
+        log.info("Starting blue team monitoring on %s", interface)
         self._running = True
 
         monitors = [
@@ -57,6 +60,7 @@ class MonitorModule:
 
     def stop(self) -> list[Alert]:
         self._running = False
+        log.info("Monitor stopped: %d alerts raised", len(self.alerts))
         return self.alerts
 
     def _add_alert(

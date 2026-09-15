@@ -10,9 +10,11 @@ from rich.table import Table
 from rich.tree import Tree
 
 from ..core.config import Config
+from ..core.logger import get_logger
 from ..core.opsec import OpsecEngine
 
 console = Console()
+log = get_logger("scanner")
 
 TIMING_MAP = {
     "aggressive": "-T4",
@@ -51,6 +53,7 @@ class ScannerModule:
 
     def discover_hosts(self, subnet: str) -> list[Host]:
         console.print(f"[cyan]Host discovery on {subnet}...[/cyan]")
+        log.info("Host discovery: subnet=%s", subnet)
         self.opsec.pre_operation()
 
         timing = TIMING_MAP.get(self.config.stealth.scan_timing, "-T3")
@@ -59,13 +62,16 @@ class ScannerModule:
         if self.config.stealth.fingerprint_spoof:
             cmd.extend(["--data-length", "24"])
 
+        log.debug("Running: %s", " ".join(cmd))
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
+            log.error("Host discovery failed (rc=%d): %s", result.returncode, result.stderr[:300])
             console.print(f"[red]Host discovery failed: {result.stderr}[/red]")
             return []
 
         self.hosts = self._parse_nmap_xml(result.stdout)
         self._display_hosts()
+        log.info("Discovery found %d hosts", len(self.hosts))
         return self.hosts
 
     def scan_ports(

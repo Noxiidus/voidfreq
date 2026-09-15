@@ -14,9 +14,11 @@ from rich.live import Live
 from rich.table import Table
 
 from ..core.config import Config
+from ..core.logger import get_logger
 from ..core.opsec import OpsecEngine
 
 console = Console()
+log = get_logger("mitm")
 
 
 @dataclass
@@ -41,6 +43,7 @@ class MitmModule:
         self, interface: str, target_ip: str, gateway_ip: str,
         ttl_spoof: bool = False,
     ) -> None:
+        log.info("Starting MITM: target=%s, gateway=%s, ttl_spoof=%s", target_ip, gateway_ip, ttl_spoof)
         self.opsec.pre_operation()
         self._running = True
         self._interface = interface
@@ -89,6 +92,9 @@ class MitmModule:
 
         self._disable_ttl_spoof()
         self._disable_ip_forwarding()
+        log.info("MITM stopped: %d DNS, %d SNI, %d HTTP captured",
+                 len(self.traffic.dns_queries), len(self.traffic.sni_domains),
+                 len(self.traffic.http_requests))
         console.print("[yellow]MITM stopped[/yellow]")
         return self.traffic
 

@@ -13,7 +13,10 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from ..core.logger import get_logger
+
 console = Console()
+log = get_logger("analyzer")
 
 
 @dataclass
@@ -43,6 +46,7 @@ class PcapAnalyzer:
             console.print(f"[red]File not found: {pcap_path}[/red]")
             return PcapAnalysis(filename=pcap_path)
 
+        log.info("Analyzing capture: %s", pcap_path)
         console.print(f"[cyan]Analyzing {pcap_path}...[/cyan]")
         self.analysis = PcapAnalysis(filename=pcap_path)
 

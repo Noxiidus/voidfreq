@@ -12,7 +12,10 @@ from urllib.parse import parse_qs
 
 from rich.console import Console
 
+from ..core.logger import get_logger
+
 console = Console()
+log = get_logger("captive")
 
 
 @dataclass
@@ -144,12 +147,14 @@ class CaptivePortal:
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
 
+        log.info("Captive portal started on %s:%d", self.listen_ip, self.port)
         console.print(f"[green]Captive portal active on {self.listen_ip}:{self.port}[/green]")
 
     def stop(self) -> list[CapturedCredential]:
         if self._server:
             self._server.shutdown()
             self._server = None
+        log.info("Captive portal stopped: %d credentials captured", len(self.credentials))
         console.print(f"[yellow]Captive portal stopped — {len(self.credentials)} credentials captured[/yellow]")
         return self.credentials
 
