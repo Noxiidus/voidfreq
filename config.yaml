@@ -1,0 +1,80 @@
+voidfreq:
+  interface: wlan0
+
+  stealth: high  # low | medium | high | ghost
+
+  stealth_profiles:
+    low:
+      mac_rotation: false
+      timing_jitter: false
+      deauth_allowed: true
+      deauth_max_packets: 50
+      scan_timing: aggressive  # nmap -T4
+      fingerprint_spoof: false
+      probe_suppress: false
+      threat_detection: false
+      auto_killswitch: false
+      tx_power_adjust: false
+
+    medium:
+      mac_rotation: true
+      timing_jitter: true
+      deauth_allowed: true
+      deauth_max_packets: 3
+      scan_timing: normal  # nmap -T3
+      fingerprint_spoof: false
+      probe_suppress: false
+      threat_detection: true
+      auto_killswitch: false
+      tx_power_adjust: false
+
+    high:
+      mac_rotation: true
+      timing_jitter: true
+      deauth_allowed: false
+      deauth_max_packets: 0
+      scan_timing: paranoid  # nmap -T1
+      fingerprint_spoof: true
+      probe_suppress: true
+      threat_detection: true
+      auto_killswitch: true
+      tx_power_adjust: true
+
+    ghost:
+      mac_rotation: true
+      timing_jitter: true
+      deauth_allowed: false
+      deauth_max_packets: 0
+      scan_timing: stealth  # nmap -T0 + fragmented
+      fingerprint_spoof: true
+      probe_suppress: true
+      threat_detection: true
+      auto_killswitch: true
+      tx_power_adjust: true
+      channel_hop_random: true
+      burst_limit: true
+
+  cracking:
+    wordlist: /usr/share/wordlists/rockyou.txt
+    use_hashcat: true
+    hashcat_mode: 22000
+
+  mitm:
+    arp_rate: 0.5  # packets per second (lower = stealthier)
+    fullduplex: true
+    capture:
+      - dns
+      - sni
+      - http_credentials
+
+  monitor:
+    arp_anomaly: true
+    deauth_detection: true
+    rogue_ap_detection: true
+    new_device_alert: true
+    port_scan_detection: true
+
+  reporting:
+    format: markdown  # markdown | json | both
+    output_dir: ./reports
+    auto_timestamp: true
