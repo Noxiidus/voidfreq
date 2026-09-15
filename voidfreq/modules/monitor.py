@@ -44,6 +44,7 @@ class MonitorModule:
             ("ARP anomaly", self._monitor_arp, interface),
             ("Deauth flood", self._monitor_deauth, interface),
             ("New devices", self._monitor_new_devices, interface),
+            ("Rogue AP", self._monitor_rogue_ap, interface),
         ]
 
         for name, func, iface in monitors:
@@ -180,6 +181,68 @@ class MonitorModule:
                             )
 
             time.sleep(10)
+
+    def _monitor_rogue_ap(self, interface: str) -> None:
+        """Detect rogue APs: duplicate SSIDs on different BSSIDs, and Evil Twin (same SSID+channel, different BSSID)."""
+        proc = subprocess.Popen(
+            ["sudo", "tshark",
+             "-i", interface,
+             "-Y", "wlan.fc.type_subtype == 0x08",
+             "-T", "fields",
+             "-e", "wlan.sa",
+             "-e", "wlan.ssid",
+             "-e", "wlan_radio.channel",
+             "-l"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+
+        ssid_bssids: dict[str, set[str]] = defaultdict(set)
+        ssid_channel_bssids: dict[tuple[str, str], set[str]] = defaultdict(set)
+
+        while self._running and proc.poll() is None:
+            line = proc.stdout.readline().strip()
+            if not line:
+                continue
+            parts = line.split("\t")
+            if len(parts) < 2:
+                continue
+
+            bssid = parts[0]
+            ssid = parts[1]
+            channel = parts[2] if len(parts) > 2 else ""
+
+            if not ssid or ssid == "\\x00":
+                continue
+
+            prev_count = len(ssid_bssids[ssid])
+            ssid_bssids[ssid].add(bssid)
+
+            if len(ssid_bssids[ssid]) > 1 and prev_count < len(ssid_bssids[ssid]):
+                self._add_alert(
+                    "WARNING",
+                    "ROGUE_AP",
+                    f'SSID "{ssid}" seen on {len(ssid_bssids[ssid])} BSSIDs — possible rogue AP: '
+                    f'{", ".join(ssid_bssids[ssid])}',
+                    source=bssid,
+                )
+
+            if channel:
+                key = (ssid, channel)
+                prev_ch_count = len(ssid_channel_bssids[key])
+                ssid_channel_bssids[key].add(bssid)
+
+                if len(ssid_channel_bssids[key]) > 1 and prev_ch_count < len(ssid_channel_bssids[key]):
+                    self._add_alert(
+                        "CRITICAL",
+                        "EVIL_TWIN",
+                        f'SSID "{ssid}" on channel {channel} from multiple BSSIDs — '
+                        f'Evil Twin attack likely: {", ".join(ssid_channel_bssids[key])}',
+                        source=bssid,
+                    )
+
+        proc.terminate()
 
     def live_dashboard(self) -> None:
         def build_panel() -> Panel:

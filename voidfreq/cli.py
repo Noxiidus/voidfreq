@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import signal
 import sys
+import threading
 
 from rich.console import Console
 from rich.panel import Panel
@@ -21,11 +22,16 @@ from .modules.attack import AttackModule
 from .modules.captive import CaptivePortal
 from .modules.dnsspoof import DnsSpoofModule
 from .modules.eviltwin import EvilTwinConfig, EvilTwinModule
+from .modules.karma import KarmaConfig, KarmaModule
 from .modules.mitm import MitmModule
 from .modules.monitor import MonitorModule
+from .modules.osint import OsintModule
+from .modules.packets import detect_client_isolation, detect_pmf
+from .modules.proxy import ProxyModule
 from .modules.recon import ReconModule
 from .modules.scanner import ScannerModule
 from .modules.wordlist import WordlistConfig, WordlistGenerator
+from .modules.wps import WpsModule
 from .utils.deps import check_dependencies, check_root, doctor
 from .utils.report import generate_report
 
@@ -73,6 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
     attack.add_argument("-ch", "--channel", type=int, required=True, help="Target channel")
     attack.add_argument("--client", help="Target client MAC (for deauth)")
     attack.add_argument("--no-crack", action="store_true", help="Capture only, skip cracking")
+    attack.add_argument("--pmf-check", action="store_true",
+                        help="Check PMF before attack to auto-select strategy")
     attack.add_argument("-o", "--output", default="./captures", help="Output directory")
 
     # scan (network scanner)
@@ -90,6 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
     mitm.add_argument("--dashboard", action="store_true", help="Show live dashboard")
     mitm.add_argument("--dns-spoof", nargs=2, action="append", metavar=("DOMAIN", "IP"),
                        help="DNS spoof rule (can repeat)")
+    mitm.add_argument("--ttl-spoof", action="store_true",
+                       help="Normalize TTL to hide MITM hop")
 
     # eviltwin
     et = sub.add_parser("eviltwin", help="Evil Twin rogue AP attack")
@@ -147,6 +157,50 @@ def build_parser() -> argparse.ArgumentParser:
     # doctor
     sub.add_parser("doctor", help="Full system diagnostic — tools, versions, interfaces, config")
 
+    # wps
+    wps = sub.add_parser("wps", help="WPS attacks — Pixie Dust, PIN brute-force")
+    wps_sub = wps.add_subparsers(dest="wps_action")
+
+    wps_scan = wps_sub.add_parser("scan", help="Scan for WPS-enabled APs")
+    wps_scan.add_argument("-d", "--duration", type=int, default=30, help="Scan duration (seconds)")
+
+    wps_pixie = wps_sub.add_parser("pixie", help="Pixie Dust attack on WPS AP")
+    wps_pixie.add_argument("-t", "--target", required=True, help="Target AP BSSID")
+    wps_pixie.add_argument("-ch", "--channel", type=int, required=True, help="Target channel")
+    wps_pixie.add_argument("--timeout", type=int, default=300, help="Timeout in seconds")
+
+    wps_brute = wps_sub.add_parser("brute", help="WPS PIN brute-force")
+    wps_brute.add_argument("-t", "--target", required=True, help="Target AP BSSID")
+    wps_brute.add_argument("-ch", "--channel", type=int, required=True, help="Target channel")
+    wps_brute.add_argument("--timeout", type=int, default=3600, help="Timeout in seconds")
+
+    # proxy
+    proxy = sub.add_parser("proxy", help="HTTPS interception proxy via mitmproxy")
+    proxy.add_argument("-p", "--port", type=int, default=8080, help="Proxy listen port")
+    proxy.add_argument("--no-transparent", action="store_true", help="Disable transparent mode")
+    proxy.add_argument("--dashboard", action="store_true", help="Show live dashboard")
+
+    # karma
+    karma = sub.add_parser("karma", help="Karma/MANA rogue AP — respond to all probe requests")
+    karma.add_argument("-ch", "--channel", type=int, default=1, help="Channel")
+    karma.add_argument("--gateway", default="192.168.99.1", help="Gateway IP for karma AP")
+    karma.add_argument("--loud", action="store_true", default=True, help="MANA loud mode (default)")
+    karma.add_argument("--no-loud", action="store_true", help="Disable MANA loud mode")
+    karma.add_argument("--captive", action="store_true", help="Enable captive portal redirect")
+    karma.add_argument("--dashboard", action="store_true", help="Show live probe dashboard")
+
+    # osint
+    osint = sub.add_parser("osint", help="Passive OSINT — vendor lookup, WiGLE, known vulns")
+    osint.add_argument("-t", "--target", required=True, help="Target AP BSSID")
+    osint.add_argument("-e", "--essid", default="", help="Target ESSID (improves results)")
+    osint.add_argument("--wigle-key", help="WiGLE API key (or set WIGLE_API_KEY env)")
+    osint.add_argument("--export", action="store_true", help="Export report to JSON")
+
+    # pmf
+    pmf = sub.add_parser("pmf", help="Detect 802.11w Protected Management Frames")
+    pmf.add_argument("-t", "--target", required=True, help="Target AP BSSID")
+    pmf.add_argument("-d", "--duration", type=int, default=30, help="Sniff duration (seconds)")
+
     return parser
 
 
@@ -175,10 +229,16 @@ def cmd_attack(config: Config, args: argparse.Namespace) -> None:
         return
 
     try:
+        pmf_info = None
+        if args.pmf_check:
+            console.print("[cyan]Running PMF pre-check...[/cyan]")
+            pmf_info = detect_pmf(monitor_iface, args.target, duration=10)
+
         attack = AttackModule(config, opsec)
         capture = attack.capture(
             monitor_iface, args.target, args.channel,
             client_mac=args.client, output_dir=args.output,
+            pmf_info=pmf_info,
         )
 
         if capture.success and not args.no_crack:
@@ -221,26 +281,26 @@ def cmd_mitm(config: Config, args: argparse.Namespace) -> None:
         for domain, ip in args.dns_spoof:
             dns_spoof.add_rule(domain, ip)
 
-    def signal_handler(sig, frame):
+    stop_event = threading.Event()
+    signal.signal(signal.SIGINT, lambda *_: stop_event.set())
+
+    mitm.start(config.interface, args.target, args.gateway, ttl_spoof=args.ttl_spoof)
+
+    if dns_spoof:
+        dns_spoof.start(config.interface)
+
+    try:
+        if args.dashboard:
+            mitm.live_dashboard()
+        else:
+            console.print("[dim]Press Ctrl+C to stop...[/dim]")
+            stop_event.wait()
+    finally:
         mitm.stop()
         mitm.export()
         if dns_spoof:
             dns_spoof.stop()
         opsec.cleanup()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-
-    mitm.start(config.interface, args.target, args.gateway)
-
-    if dns_spoof:
-        dns_spoof.start(config.interface)
-
-    if args.dashboard:
-        mitm.live_dashboard()
-    else:
-        console.print("[dim]Press Ctrl+C to stop...[/dim]")
-        signal.pause()
 
 
 def cmd_eviltwin(config: Config, args: argparse.Namespace) -> None:
@@ -257,41 +317,41 @@ def cmd_eviltwin(config: Config, args: argparse.Namespace) -> None:
         captive_portal=args.captive,
     )
 
-    def signal_handler(sig, frame):
-        if portal:
-            portal.export()
-            portal.stop()
-        et.stop()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
+    stop_event = threading.Event()
+    signal.signal(signal.SIGINT, lambda *_: stop_event.set())
 
     if et.start(twin_config):
         if args.captive:
             portal = CaptivePortal(listen_ip=twin_config.gateway_ip)
             portal.start()
 
-        console.print("[dim]Press Ctrl+C to stop...[/dim]")
-        signal.pause()
+        try:
+            console.print("[dim]Press Ctrl+C to stop...[/dim]")
+            stop_event.wait()
+        finally:
+            if portal:
+                portal.export()
+                portal.stop()
+            et.stop()
 
 
 def cmd_monitor(config: Config, args: argparse.Namespace) -> None:
     monitor = MonitorModule(config)
 
-    def signal_handler(sig, frame):
-        monitor.stop()
-        monitor.export_alerts()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
+    stop_event = threading.Event()
+    signal.signal(signal.SIGINT, lambda *_: stop_event.set())
 
     monitor.start(config.interface)
 
-    if args.dashboard:
-        monitor.live_dashboard()
-    else:
-        console.print("[dim]Press Ctrl+C to stop...[/dim]")
-        signal.pause()
+    try:
+        if args.dashboard:
+            monitor.live_dashboard()
+        else:
+            console.print("[dim]Press Ctrl+C to stop...[/dim]")
+            stop_event.wait()
+    finally:
+        monitor.stop()
+        monitor.export_alerts()
 
 
 def cmd_threat(config: Config, args: argparse.Namespace) -> None:
@@ -527,6 +587,129 @@ def cmd_doctor(config: Config, args: argparse.Namespace) -> None:
     doctor()
 
 
+def cmd_wps(config: Config, args: argparse.Namespace) -> None:
+    opsec = OpsecEngine(config)
+    iface_mgr = InterfaceManager(config.interface)
+
+    monitor_iface = iface_mgr.enable_monitor_mode()
+    if not monitor_iface:
+        return
+
+    try:
+        wps = WpsModule(config, opsec)
+
+        if args.wps_action == "scan":
+            wps.scan_wps(monitor_iface, duration=args.duration)
+        elif args.wps_action == "pixie":
+            result = wps.pixie_dust(
+                monitor_iface, args.target, args.channel, timeout=args.timeout,
+            )
+            if result.success:
+                console.print(f"\n[green bold]PIN: {result.pin}[/green bold]")
+                if result.password:
+                    console.print(f"[green bold]Password: {result.password}[/green bold]")
+            else:
+                console.print(f"\n[yellow]{result.message}[/yellow]")
+        elif args.wps_action == "brute":
+            result = wps.brute_force(
+                monitor_iface, args.target, args.channel, timeout=args.timeout,
+            )
+            if result.success:
+                console.print(f"\n[green bold]PIN: {result.pin}[/green bold]")
+                if result.password:
+                    console.print(f"[green bold]Password: {result.password}[/green bold]")
+            else:
+                console.print(f"\n[yellow]{result.message}[/yellow]")
+        else:
+            console.print("[yellow]Usage: voidfreq wps {scan|pixie|brute}[/yellow]")
+    finally:
+        iface_mgr.disable_monitor_mode()
+        opsec.cleanup()
+
+
+def cmd_proxy(config: Config, args: argparse.Namespace) -> None:
+    opsec = OpsecEngine(config)
+    proxy = ProxyModule(config, opsec)
+
+    transparent = not args.no_transparent
+
+    if not proxy.start(config.interface, listen_port=args.port, transparent=transparent):
+        return
+
+    stop_event = threading.Event()
+    signal.signal(signal.SIGINT, lambda *_: stop_event.set())
+
+    try:
+        if args.dashboard:
+            proxy.live_dashboard()
+        else:
+            console.print("[dim]Press Ctrl+C to stop...[/dim]")
+            stop_event.wait()
+    finally:
+        proxy.stop()
+        proxy.export()
+        opsec.cleanup()
+
+
+def cmd_karma(config: Config, args: argparse.Namespace) -> None:
+    opsec = OpsecEngine(config)
+    karma = KarmaModule(config, opsec)
+
+    karma_config = KarmaConfig(
+        interface=config.interface,
+        channel=args.channel,
+        gateway_ip=args.gateway,
+        mana_loud=not args.no_loud,
+        captive_portal=args.captive,
+    )
+
+    if not karma.start(karma_config):
+        return
+
+    stop_event = threading.Event()
+    signal.signal(signal.SIGINT, lambda *_: stop_event.set())
+
+    try:
+        if args.dashboard:
+            karma.live_dashboard()
+        else:
+            console.print("[dim]Press Ctrl+C to stop...[/dim]")
+            stop_event.wait()
+    finally:
+        karma.stop()
+        karma.export()
+
+
+def cmd_osint(config: Config, args: argparse.Namespace) -> None:
+    import os as _os
+    wigle_key = args.wigle_key or _os.environ.get("WIGLE_API_KEY")
+    osint = OsintModule(wigle_api_key=wigle_key)
+    report = osint.investigate(args.target, essid=args.essid)
+
+    if args.export:
+        osint.export(report)
+
+
+def cmd_pmf(config: Config, args: argparse.Namespace) -> None:
+    iface_mgr = InterfaceManager(config.interface)
+
+    monitor_iface = iface_mgr.enable_monitor_mode()
+    if not monitor_iface:
+        return
+
+    try:
+        result = detect_pmf(monitor_iface, args.target, duration=args.duration)
+        if result.get("pmf_required"):
+            console.print("\n[red bold]Conclusion: Deauth attacks WILL NOT WORK on this AP[/red bold]")
+            console.print("[dim]Use PMKID or passive capture strategies instead[/dim]")
+        elif result.get("pmf_capable"):
+            console.print("\n[yellow]Conclusion: Deauth may partially work — PMF clients are protected[/yellow]")
+        else:
+            console.print("\n[green]Conclusion: AP has no PMF — all attack strategies available[/green]")
+    finally:
+        iface_mgr.disable_monitor_mode()
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -561,9 +744,14 @@ def main() -> None:
         "opsec": cmd_opsec,
         "check": cmd_check,
         "doctor": cmd_doctor,
+        "wps": cmd_wps,
+        "proxy": cmd_proxy,
+        "karma": cmd_karma,
+        "osint": cmd_osint,
+        "pmf": cmd_pmf,
     }
 
-    no_root_commands = ("check", "doctor", "opsec", "session", "wordlist", "analyze")
+    no_root_commands = ("check", "doctor", "opsec", "session", "wordlist", "analyze", "osint")
 
     if args.command in commands:
         if args.command not in no_root_commands and not check_root():

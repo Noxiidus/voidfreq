@@ -32,10 +32,15 @@ OPTIONAL = {
     "arpspoof": "ARP spoofing (dsniff suite)",
     "macchanger": "MAC address spoofing",
     "mitmproxy": "HTTPS interception proxy",
+    "mitmdump": "HTTPS proxy daemon (mitmproxy)",
     "hostapd": "Evil Twin rogue AP",
+    "hostapd-mana": "Karma/MANA AP (patched hostapd)",
     "dnsmasq": "DHCP/DNS for Evil Twin + DNS spoofing",
     "tcpdump": "Traffic capture",
     "arping": "ARP probing (threat detection)",
+    "reaver": "WPS PIN attack (Pixie Dust + brute-force)",
+    "bully": "WPS PIN attack (alternative to reaver)",
+    "wash": "WPS AP discovery scanner",
 }
 
 VERSION_FLAGS = {
@@ -49,6 +54,9 @@ VERSION_FLAGS = {
     "hcxdumptool": ["--version"],
     "macchanger": ["--version"],
     "mitmproxy": ["--version"],
+    "reaver": ["-h"],
+    "bully": ["-h"],
+    "wash": ["-h"],
 }
 
 TOOL_FEATURES = {
@@ -65,6 +73,10 @@ TOOL_FEATURES = {
     "wordlist": [],
     "analyze": ["tshark", "aircrack-ng"],
     "threat": ["nmap", "arping"],
+    "wps": ["reaver", "wash"],
+    "proxy": ["mitmdump"],
+    "karma": ["hostapd-mana", "dnsmasq"],
+    "osint": [],
 }
 
 
@@ -154,11 +166,16 @@ def doctor() -> dict:
     sys_table.add_row("Python", f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
     sys_table.add_row("Platform", platform.platform())
     sys_table.add_row("Arch", platform.machine())
-    sys_table.add_row("UID", str(os.getuid()))
 
-    if os.getuid() == 0:
+    euid = os.geteuid() if hasattr(os, "geteuid") else -1
+    sys_table.add_row("UID", str(euid))
+
+    if euid == 0:
         sys_table.add_row("Root", "[green]yes[/green]")
         results["passed"] += 1
+    elif euid == -1:
+        sys_table.add_row("Root", "[yellow]N/A (non-POSIX platform)[/yellow]")
+        results["warnings"] += 1
     else:
         sys_table.add_row("Root", "[yellow]no — most commands require sudo[/yellow]")
         results["warnings"] += 1
@@ -437,6 +454,9 @@ def _doctor_config(results: dict) -> None:
 
 
 def check_root() -> bool:
+    if not hasattr(os, "geteuid"):
+        console.print("[red]VoidFreq requires a POSIX system (Linux). Windows is not supported for live operations.[/red]")
+        return False
     if os.geteuid() != 0:
         console.print("[red]VoidFreq requires root privileges. Run with sudo.[/red]")
         return False

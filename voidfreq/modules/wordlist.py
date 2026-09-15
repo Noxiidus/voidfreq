@@ -20,7 +20,7 @@ COMMON_SUFFIXES = [
     "net", "Net", "NET",
 ]
 
-YEAR_RANGE = range(2020, 2027)
+YEAR_RANGE = range(2018, 2028)
 
 LEET_MAP = {
     "a": ["a", "A", "@", "4"],

@@ -1,28 +1,32 @@
 # VoidFreq Roadmap
 
-> Current version: **v0.3.0** — 31 Python files, ~5500 lines, 55 unit tests, CI pipeline active.
+> Current version: **v0.5.0** — 36 Python files, ~7500 lines, 55 unit tests, CI pipeline active.
 
 ---
 
-## Current State (v0.3.0)
+## Current State (v0.5.0)
 
 ### What's done and working
 
 **Red Team modules:**
 - `recon` — passive AP/client scan via airodump-ng, vendor resolution
-- `attack` — PMKID capture (hcxdumptool), passive handshake, targeted deauth; cracking via hashcat (GPU) with aircrack-ng fallback
+- `attack` — PMKID capture (hcxdumptool), passive handshake, targeted deauth; cracking via hashcat (GPU) with aircrack-ng fallback; PMF-aware strategy selection; auto hash export (hc22000 + hccapx)
 - `scan` — nmap host discovery, port scan, vuln scan, OS fingerprinting
-- `mitm` — ARP spoofing (fullduplex), DNS/SNI/HTTP capture via tshark, live dashboard
+- `mitm` — ARP spoofing (fullduplex), DNS/SNI/HTTP capture via tshark, live dashboard, TTL spoofing to hide MITM hop
 - `dnsspoof` — domain-level DNS redirection via dnsmasq + iptables
 - `eviltwin` — rogue AP with hostapd + dnsmasq, DHCP, NAT, optional captive portal, traffic capture
 - `captive` — HTTP captive portal with credential harvesting, custom HTML templates, JSON export
-- `packets` — native Scapy: deauth (single + broadcast), beacon scan, probe injection, handshake capture, hidden SSID reveal
+- `packets` — native Scapy: deauth (single + broadcast), beacon scan, probe injection, handshake capture, hidden SSID reveal, PMF detection (802.11w RSN IE parsing), client isolation detection
+- `wps` — WPS AP scanning via wash, Pixie Dust attack (reaver + bully), PIN brute-force
+- `proxy` — HTTPS interception proxy via mitmproxy (transparent mode, credential capture, cookie/TLS logging, live dashboard)
+- `karma` — Karma/MANA attack via hostapd-mana (respond to all probes, MANA loud mode, probe monitoring, traffic capture, NAT, captive portal redirect)
+- `osint` — passive OSINT: MAC vendor lookup, WiGLE geolocation API, known vendor vulnerability database, default ESSID pattern detection
 - `wordlist` — ESSID-based wordlist generator (leet speak, year combos, keyboard walks, custom words)
 - `analyzer` — offline pcap analysis (DNS, SNI, HTTP, credentials, handshakes, deauths, beacons, top talkers)
 - `auto` — full automated chain: threat check → recon → capture → crack → network enum, with session save/resume
 
 **Blue Team modules:**
-- `monitor` — ARP anomaly detection, deauth flood detection, new device alerts, live Rich dashboard
+- `monitor` — ARP anomaly detection, deauth flood detection, new device alerts, rogue AP detection (duplicate SSIDs), Evil Twin detection (same SSID+channel from multiple BSSIDs), live Rich dashboard
 - `threat` — IDS/WIDS port scanning, enterprise AP MAC detection, WIDS process detection, kill switch
 
 **OPSEC engine:**
@@ -34,7 +38,7 @@
 - Auto-cleanup (MAC, hostname, routes, iptables restore)
 
 **Infrastructure:**
-- CLI with 15 subcommands (including `doctor` and `check`)
+- CLI with 20 subcommands (including `doctor`, `check`, `wps`, `proxy`, `karma`, `osint`, `pmf`)
 - YAML config with 4 stealth profiles (low/medium/high/ghost)
 - Config validation with clear error messages
 - Session management (save/resume/export pentest sessions)
@@ -47,14 +51,57 @@
 
 ---
 
-## Phase 1: Hardening (v0.4.0)
+## Phase 1.5: New Modules (v0.5.0) — DONE
+
+Priority: expand attack surface and detection capabilities.
+
+### New Red Team modules
+- [x] WPS module — wash AP discovery, Pixie Dust (reaver + bully), PIN brute-force
+- [x] HTTPS proxy — mitmproxy transparent mode, credential/cookie/TLS capture, live dashboard
+- [x] Karma/MANA — hostapd-mana rogue AP, probe request monitoring, MANA loud, NAT, captive portal redirect
+- [x] Passive OSINT — MAC vendor lookup, WiGLE geolocation, known vendor vulnerability DB, default ESSID patterns
+
+### Attack enhancements
+- [x] PMF detection (802.11w) — RSN IE parsing from beacon frames, capability bits 6/7
+- [x] PMF-aware attack strategy — auto-skip deauth if PMF required
+- [x] Client isolation detection — inter-client traffic test via Scapy
+- [x] Handshake hash auto-export — automatic hc22000 + hccapx conversion after capture
+- [x] TTL spoofing in MITM — iptables mangle rule to normalize outgoing TTL (hides MITM hop)
+
+### Blue Team enhancements
+- [x] Rogue AP detection — alert when same SSID appears on multiple BSSIDs
+- [x] Evil Twin detection — alert when same SSID + channel seen from different BSSIDs (CRITICAL)
+
+### CLI
+- [x] `wps scan` / `wps pixie` / `wps brute` subcommands
+- [x] `proxy` subcommand with transparent mode + dashboard
+- [x] `karma` subcommand with MANA loud + dashboard
+- [x] `osint` subcommand with WiGLE API + export
+- [x] `pmf` subcommand for standalone PMF detection
+- [x] `attack --pmf-check` flag for pre-attack PMF assessment
+- [x] `mitm --ttl-spoof` flag for TTL normalization
+
+---
+
+## Phase 1: Hardening (v0.4.0) — DONE
 
 Priority: make existing features bullet-proof.
 
 ### Error handling & resilience
-- [ ] Graceful fallback when external tools are missing (try operation, catch FileNotFoundError, suggest `voidfreq doctor`)
-- [ ] Timeout handling for all subprocess calls (currently some have no timeout)
-- [ ] Signal handling cleanup — ensure Ctrl+C always restores MAC/hostname/iptables even on crash
+- [x] Graceful fallback when external tools are missing (try/catch FileNotFoundError in threat detector)
+- [x] Timeout handling for all subprocess calls (threat detector, scanner)
+- [x] Signal handling cleanup — Ctrl+C now uses threading.Event + try/finally instead of signal.pause + sys.exit
+- [x] Evil Twin iptables cleanup now removes only its own rules instead of flushing all nat rules
+- [x] DNS spoof iptables restore now matches the exact rules that were added (includes interface)
+- [x] DNS spoof wildcard rules now go to dnsmasq config (--conf-file) instead of hosts file (--addn-hosts)
+- [x] Fixed hardcoded version "0.1.0" in JSON reports — now uses __version__
+- [x] Fixed scanner vuln display showing all script output as vulns — now only VULNERABLE matches
+- [x] Fixed callable type hint in ThreatDetector to use collections.abc.Callable
+- [x] Fixed os.getuid/geteuid inconsistency in doctor mode
+- [x] Added POSIX platform check to check_root()
+- [x] MITM module now initializes _arp_proc1/_arp_proc2 in __init__
+- [x] Report format validation now accepts "both"
+- [x] Wordlist year range extended to 2018–2027
 - [ ] Wrap all `subprocess.run` calls through a central runner with logging, timeout, and error reporting
 
 ### Testing
@@ -202,17 +249,21 @@ voidfreq/
 │   ├── captive.py      # CaptivePortal: HTTP server, login page, credential harvest
 │   ├── dnsspoof.py     # DnsSpoofModule: dnsmasq + iptables PREROUTING redirect
 │   ├── eviltwin.py     # EvilTwinModule: hostapd + dnsmasq + NAT + tcpdump
-│   ├── mitm.py         # MitmModule: ARP spoof + threaded DNS/SNI/HTTP capture
-│   ├── monitor.py      # MonitorModule: ARP anomaly, deauth flood, new device alerts
-│   ├── packets.py      # Native Scapy: deauth, beacon scan, probe inject, handshake capture
+│   ├── karma.py        # KarmaModule: hostapd-mana Karma/MANA, probe monitoring, NAT
+│   ├── mitm.py         # MitmModule: ARP spoof + DNS/SNI/HTTP capture + TTL spoof
+│   ├── monitor.py      # MonitorModule: ARP anomaly, deauth flood, rogue AP, Evil Twin detection
+│   ├── osint.py        # OsintModule: MAC vendor, WiGLE, known vulns, ESSID patterns
+│   ├── packets.py      # Native Scapy: deauth, beacon, probe, PMF detect, client isolation
+│   ├── proxy.py        # ProxyModule: mitmproxy HTTPS interception, cred/cookie/TLS capture
 │   ├── recon.py        # ReconModule: airodump-ng wrapper with CSV parsing
 │   ├── scanner.py      # ScannerModule: nmap wrapper (host/port/vuln/OS)
-│   └── wordlist.py     # WordlistGenerator: ESSID-based with leet/years/patterns/walks
+│   ├── wordlist.py     # WordlistGenerator: ESSID-based with leet/years/patterns/walks
+│   └── wps.py          # WpsModule: wash scan, Pixie Dust (reaver/bully), PIN brute-force
 ├── utils/
 │   ├── deps.py         # check_dependencies() + doctor() full system diagnostic
 │   └── report.py       # Markdown/JSON pentest report generation
 ├── cli.py              # argparse CLI, 15 subcommands, banner, command dispatch
-└── __init__.py         # __version__ = "0.3.0", __author__ = "Noxiidus"
+└── __init__.py         # __version__ = "0.4.0", __author__ = "Noxiidus"
 ```
 
 ### Key patterns

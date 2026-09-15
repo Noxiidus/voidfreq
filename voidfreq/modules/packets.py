@@ -275,3 +275,102 @@ def inject_probe_request(
     )
 
     sendp(pkt, iface=interface, verbose=False)
+
+
+def detect_pmf(
+    interface: str,
+    bssid: str,
+    duration: int = 30,
+) -> dict:
+    """Detect 802.11w Protected Management Frames on target AP."""
+    if not check_scapy():
+        return {"pmf_capable": False, "pmf_required": False, "error": "scapy unavailable"}
+
+    result = {"pmf_capable": False, "pmf_required": False, "bssid": bssid}
+
+    def process_packet(pkt):
+        if not pkt.haslayer(Dot11Beacon):
+            return
+        if pkt[Dot11].addr2 != bssid:
+            return
+
+        elt = pkt.getlayer(Dot11Elt)
+        while elt:
+            if elt.ID == 48 and elt.info and len(elt.info) >= 8:
+                rsn_bytes = elt.info
+                try:
+                    offset = 2  # version
+                    offset += 4  # group cipher
+                    pw_count = int.from_bytes(rsn_bytes[offset:offset+2], "little")
+                    offset += 2 + (pw_count * 4)
+                    akm_count = int.from_bytes(rsn_bytes[offset:offset+2], "little")
+                    offset += 2 + (akm_count * 4)
+
+                    if offset + 2 <= len(rsn_bytes):
+                        caps = int.from_bytes(rsn_bytes[offset:offset+2], "little")
+                        result["pmf_capable"] = bool(caps & (1 << 6))
+                        result["pmf_required"] = bool(caps & (1 << 7))
+                        result["rsn_caps_raw"] = f"0x{caps:04x}"
+                except (IndexError, ValueError):
+                    pass
+                return
+
+            elt = elt.payload if hasattr(elt.payload, "ID") else None
+
+    console.print(f"[cyan]Checking PMF status for {bssid} ({duration}s)...[/cyan]")
+
+    sniff(
+        iface=interface, prn=process_packet,
+        timeout=duration, store=False,
+        lfilter=lambda p: p.haslayer(Dot11Beacon),
+    )
+
+    if result["pmf_required"]:
+        console.print(f"[red bold]PMF REQUIRED on {bssid} — deauth attacks will NOT work[/red bold]")
+    elif result["pmf_capable"]:
+        console.print(f"[yellow]PMF capable on {bssid} — deauth may fail on PMF clients[/yellow]")
+    else:
+        console.print(f"[green]No PMF on {bssid} — deauth attacks viable[/green]")
+
+    return result
+
+
+def detect_client_isolation(
+    interface: str,
+    ap_mac: str,
+    client1_mac: str,
+    client2_mac: str,
+    timeout: int = 5,
+) -> bool:
+    """Test if AP blocks inter-client traffic."""
+    if not check_scapy():
+        return False
+
+    pkt = (
+        RadioTap() /
+        Dot11(
+            type=2, subtype=0,
+            addr1=ap_mac,
+            addr2=client1_mac,
+            addr3=client2_mac,
+            FCfield=0x01,
+        )
+    )
+
+    sendp(pkt, iface=interface, verbose=False, count=3)
+
+    received = []
+
+    def check_response(p):
+        if p.haslayer(Dot11) and p[Dot11].addr1 == client2_mac:
+            received.append(p)
+
+    sniff(iface=interface, prn=check_response, timeout=timeout, store=False)
+
+    isolated = len(received) == 0
+    if isolated:
+        console.print("[yellow]Client isolation detected — inter-client traffic blocked[/yellow]")
+    else:
+        console.print("[green]No client isolation — inter-client traffic passes[/green]")
+
+    return isolated

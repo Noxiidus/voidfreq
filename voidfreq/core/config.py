@@ -15,7 +15,7 @@ class ConfigError(Exception):
 
 VALID_STEALTH_LEVELS = ("low", "medium", "high", "ghost")
 VALID_SCAN_TIMINGS = ("aggressive", "normal", "paranoid", "stealth")
-VALID_REPORT_FORMATS = ("markdown", "json")
+VALID_REPORT_FORMATS = ("markdown", "json", "both")
 
 
 @dataclass

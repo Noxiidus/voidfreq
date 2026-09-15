@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from rich.console import Console
@@ -69,9 +70,9 @@ class ThreatDetector:
         self.config = config
         self.indicators: list[ThreatIndicator] = []
         self._running = False
-        self._killswitch_callback: callable | None = None
+        self._killswitch_callback: Callable[[], None] | None = None
 
-    def set_killswitch(self, callback: callable) -> None:
+    def set_killswitch(self, callback: Callable[[], None]) -> None:
         self._killswitch_callback = callback
 
     def scan_once(self, interface: str, gateway_ip: str) -> list[ThreatIndicator]:
@@ -120,10 +121,13 @@ class ThreatDetector:
 
     def _check_ids_ports(self, gateway_ip: str) -> None:
         ports = ",".join(str(p) for p in self.KNOWN_IDS_PORTS)
-        result = subprocess.run(
-            ["nmap", "-sT", "-p", ports, "--open", "-T4", gateway_ip, "-oX", "-"],
-            capture_output=True, text=True, timeout=30,
-        )
+        try:
+            result = subprocess.run(
+                ["nmap", "-sT", "-p", ports, "--open", "-T4", gateway_ip, "-oX", "-"],
+                capture_output=True, text=True, timeout=30,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return
 
         if result.returncode != 0:
             return
@@ -145,9 +149,12 @@ class ThreatDetector:
             pass
 
     def _check_enterprise_aps(self, interface: str) -> None:
-        result = subprocess.run(
-            ["arp", "-a"], capture_output=True, text=True,
-        )
+        try:
+            result = subprocess.run(
+                ["arp", "-a"], capture_output=True, text=True, timeout=10,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return
 
         for line in result.stdout.split("\n"):
             for prefix, vendor in self.KNOWN_IDS_MACS.items():
@@ -159,17 +166,20 @@ class ThreatDetector:
                     )
 
     def _check_arp_monitoring(self, gateway_ip: str) -> None:
-        result1 = subprocess.run(
-            ["arping", "-c", "3", "-I", self.config.interface, gateway_ip],
-            capture_output=True, text=True, timeout=10,
-        )
+        try:
+            result1 = subprocess.run(
+                ["arping", "-c", "3", "-I", self.config.interface, gateway_ip],
+                capture_output=True, text=True, timeout=10,
+            )
 
-        time.sleep(2)
+            time.sleep(2)
 
-        result2 = subprocess.run(
-            ["arping", "-c", "3", "-I", self.config.interface, gateway_ip],
-            capture_output=True, text=True, timeout=10,
-        )
+            result2 = subprocess.run(
+                ["arping", "-c", "3", "-I", self.config.interface, gateway_ip],
+                capture_output=True, text=True, timeout=10,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return
 
         if "Received 0" in (result1.stdout + result2.stdout):
             self._add_indicator(
@@ -179,9 +189,12 @@ class ThreatDetector:
             )
 
     def _check_running_processes(self) -> None:
-        result = subprocess.run(
-            ["ps", "aux"], capture_output=True, text=True,
-        )
+        try:
+            result = subprocess.run(
+                ["ps", "aux"], capture_output=True, text=True, timeout=10,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return
 
         for sig in self.WIDS_SIGNATURES:
             if sig in result.stdout.lower():

@@ -40,7 +40,7 @@ def test_no_years():
     gen = WordlistGenerator(config)
     words = gen.generate()
 
-    year_words = {w for w in words if "2024" in w or "2025" in w}
+    year_words = {w for w in words if any(str(y) in w for y in range(2018, 2028))}
     assert len(year_words) == 0
 
 

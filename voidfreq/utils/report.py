@@ -120,10 +120,12 @@ def _write_json(
     traffic_data: dict | None,
     alerts_data: dict | None,
 ) -> None:
+    from .. import __version__
+
     data = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "tool": "VoidFreq",
-        "version": "0.1.0",
+        "version": __version__,
         "reconnaissance": scan_data,
         "capture": capture_data,
         "cracking": crack_data,

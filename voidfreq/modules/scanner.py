@@ -230,7 +230,7 @@ class ScannerModule:
             vuln_branch = tree.add("[red bold]Vulnerabilities[/red bold]")
             for port in host.ports:
                 for script_id, output in port.scripts.items():
-                    if "VULNERABLE" in output.upper() or "ERROR" not in output.upper():
+                    if "VULNERABLE" in output.upper():
                         vuln_branch.add(
                             f"[red]{port.number}/{port.protocol} — {script_id}[/red]\n"
                             f"[dim]{output[:200]}[/dim]"

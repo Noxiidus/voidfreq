@@ -39,6 +39,8 @@ class EvilTwinModule:
         self.opsec = opsec
         self._procs: list[subprocess.Popen] = []
         self._tmpdir: tempfile.TemporaryDirectory | None = None
+        self._iptables_rules: list[list[str]] = []
+        self._ip_forward_was_enabled: bool = False
 
     def start(self, twin_config: EvilTwinConfig) -> bool:
         console.print(f"[cyan]Starting Evil Twin: \"{twin_config.essid}\" on ch{twin_config.channel}[/cyan]")
@@ -87,12 +89,16 @@ class EvilTwinModule:
 
         self._procs.clear()
 
-        subprocess.run(["sudo", "iptables", "-t", "nat", "-F"], capture_output=True)
-        subprocess.run(["sudo", "iptables", "-F"], capture_output=True)
-        subprocess.run(
-            ["sudo", "sysctl", "-w", "net.ipv4.ip_forward=0"],
-            capture_output=True,
-        )
+        for rule in self._iptables_rules:
+            delete_rule = [r if r != "-A" else "-D" for r in rule]
+            subprocess.run(["sudo", "iptables"] + delete_rule, capture_output=True)
+        self._iptables_rules.clear()
+
+        if not self._ip_forward_was_enabled:
+            subprocess.run(
+                ["sudo", "sysctl", "-w", "net.ipv4.ip_forward=0"],
+                capture_output=True,
+            )
 
         if self._tmpdir:
             self._tmpdir.cleanup()
@@ -203,6 +209,12 @@ class EvilTwinModule:
         return True
 
     def _setup_nat(self, tc: EvilTwinConfig) -> None:
+        fwd_check = subprocess.run(
+            ["sysctl", "-n", "net.ipv4.ip_forward"],
+            capture_output=True, text=True,
+        )
+        self._ip_forward_was_enabled = fwd_check.stdout.strip() == "1"
+
         subprocess.run(
             ["sudo", "sysctl", "-w", "net.ipv4.ip_forward=1"],
             capture_output=True,
@@ -213,18 +225,19 @@ class EvilTwinModule:
             console.print("[yellow]No default route found — no internet forwarding[/yellow]")
             return
 
-        cmds = [
-            ["sudo", "iptables", "-t", "nat", "-A", "POSTROUTING",
+        rules = [
+            ["-t", "nat", "-A", "POSTROUTING",
              "-o", internet_iface, "-j", "MASQUERADE"],
-            ["sudo", "iptables", "-A", "FORWARD",
+            ["-A", "FORWARD",
              "-i", tc.interface, "-o", internet_iface, "-j", "ACCEPT"],
-            ["sudo", "iptables", "-A", "FORWARD",
+            ["-A", "FORWARD",
              "-i", internet_iface, "-o", tc.interface,
              "-m", "state", "--state", "RELATED,ESTABLISHED", "-j", "ACCEPT"],
         ]
 
-        for cmd in cmds:
-            subprocess.run(cmd, capture_output=True)
+        for rule in rules:
+            subprocess.run(["sudo", "iptables"] + rule, capture_output=True)
+            self._iptables_rules.append(rule)
 
         console.print(f"[dim]NAT configured: {tc.interface} → {internet_iface}[/dim]")
 
