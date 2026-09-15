@@ -22,10 +22,14 @@ OPTIONAL = {
     "hashcat": "GPU-accelerated cracking",
     "bettercap": "MITM framework",
     "tshark": "Packet analysis (Wireshark CLI)",
-    "nmap": "Network scanning",
+    "nmap": "Network scanning + vulnerability detection",
     "arpspoof": "ARP spoofing (dsniff suite)",
     "macchanger": "MAC address spoofing",
     "mitmproxy": "HTTPS interception proxy",
+    "hostapd": "Evil Twin rogue AP",
+    "dnsmasq": "DHCP/DNS for Evil Twin + DNS spoofing",
+    "tcpdump": "Traffic capture",
+    "arping": "ARP probing (threat detection)",
 }
 
 

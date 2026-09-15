@@ -65,12 +65,15 @@ class OpsecEngine:
         return subprocess.run(cmd, capture_output=True, text=True, check=check)
 
     def save_original_state(self) -> None:
+        if self.state.original_mac:
+            return
+
         result = self._run(["ip", "link", "show", self.state.interface], check=False)
         if result.returncode == 0:
-            for part in result.stdout.split():
-                if ":" in part and len(part) == 17:
-                    self.state.original_mac = part
-                    break
+            import re
+            match = re.search(r"link/ether\s+([0-9a-f:]{17})", result.stdout)
+            if match:
+                self.state.original_mac = match.group(1)
 
         result = self._run(["hostname"], check=False)
         if result.returncode == 0:

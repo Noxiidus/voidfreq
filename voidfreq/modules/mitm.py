@@ -70,6 +70,16 @@ class MitmModule:
 
     def stop(self) -> CapturedTraffic:
         self._running = False
+
+        for proc_name in ("_arp_proc1", "_arp_proc2"):
+            proc = getattr(self, proc_name, None)
+            if proc:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=5)
+                except Exception:
+                    proc.kill()
+
         self._disable_ip_forwarding()
         console.print("[yellow]MITM stopped[/yellow]")
         return self.traffic

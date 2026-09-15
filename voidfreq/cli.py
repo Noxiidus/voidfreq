@@ -11,13 +11,18 @@ from rich.panel import Panel
 from rich.text import Text
 
 from . import __version__
-from .core.config import load_config, Config
+from .core.config import load_config, Config, StealthProfile
 from .core.interface import InterfaceManager
 from .core.opsec import OpsecEngine
+from .core.session import SessionManager, Phase
+from .core.threat import ThreatDetector
 from .modules.recon import ReconModule
 from .modules.attack import AttackModule
 from .modules.mitm import MitmModule
 from .modules.monitor import MonitorModule
+from .modules.scanner import ScannerModule
+from .modules.eviltwin import EvilTwinModule, EvilTwinConfig
+from .modules.dnsspoof import DnsSpoofModule
 from .utils.deps import check_dependencies, check_root, check_interface
 from .utils.report import generate_report
 
@@ -67,21 +72,51 @@ def build_parser() -> argparse.ArgumentParser:
     attack.add_argument("--no-crack", action="store_true", help="Capture only, skip cracking")
     attack.add_argument("-o", "--output", default="./captures", help="Output directory")
 
+    # scan (network scanner)
+    scan = sub.add_parser("scan", help="Network host/port scanning")
+    scan.add_argument("-t", "--target", help="Target IP or subnet (e.g. 192.168.1.0/24)")
+    scan.add_argument("-p", "--ports", default="1-1000", help="Port range (default: 1-1000)")
+    scan.add_argument("--discover", action="store_true", help="Host discovery only")
+    scan.add_argument("--vuln", action="store_true", help="Vulnerability scan")
+    scan.add_argument("--os", action="store_true", help="OS detection")
+
     # mitm
     mitm = sub.add_parser("mitm", help="Man-in-the-Middle attack")
     mitm.add_argument("-t", "--target", required=True, help="Target IP")
     mitm.add_argument("-g", "--gateway", required=True, help="Gateway IP")
     mitm.add_argument("--dashboard", action="store_true", help="Show live dashboard")
+    mitm.add_argument("--dns-spoof", nargs=2, action="append", metavar=("DOMAIN", "IP"),
+                       help="DNS spoof rule (can repeat)")
+
+    # eviltwin
+    et = sub.add_parser("eviltwin", help="Evil Twin rogue AP attack")
+    et.add_argument("-e", "--essid", required=True, help="SSID to clone")
+    et.add_argument("-ch", "--channel", type=int, required=True, help="Channel")
+    et.add_argument("--wpa", help="WPA2 passphrase (omit for open)")
+    et.add_argument("--captive", action="store_true", help="Enable captive portal")
 
     # monitor
     monitor = sub.add_parser("monitor", help="Blue team network monitoring")
     monitor.add_argument("--dashboard", action="store_true", help="Show live dashboard")
+
+    # threat
+    threat = sub.add_parser("threat", help="Scan for IDS/WIDS presence")
+    threat.add_argument("-g", "--gateway", required=True, help="Gateway IP to scan")
 
     # auto
     auto = sub.add_parser("auto", help="Full automated attack chain")
     auto.add_argument("-t", "--target", required=True, help="Target AP BSSID")
     auto.add_argument("-ch", "--channel", type=int, required=True, help="Target channel")
     auto.add_argument("--client", help="Target client MAC")
+    auto.add_argument("--session", help="Session name (enables save/resume)")
+    auto.add_argument("--resume", help="Resume session by ID")
+
+    # session
+    session = sub.add_parser("session", help="Manage pentest sessions")
+    session.add_argument("--list", action="store_true", help="List saved sessions")
+    session.add_argument("--show", help="Show session details by ID")
+    session.add_argument("--delete", help="Delete session by ID")
+    session.add_argument("--export", help="Export session report by ID")
 
     # opsec
     opsec = sub.add_parser("opsec", help="OPSEC status and cleanup")
@@ -136,19 +171,49 @@ def cmd_attack(config: Config, args: argparse.Namespace) -> None:
         opsec.cleanup()
 
 
+def cmd_scan(config: Config, args: argparse.Namespace) -> None:
+    opsec = OpsecEngine(config)
+    scanner = ScannerModule(config, opsec)
+
+    if not args.target:
+        console.print("[red]Target required: -t <IP or subnet>[/red]")
+        return
+
+    if args.discover:
+        scanner.discover_hosts(args.target)
+    elif args.vuln:
+        scanner.quick_vuln_scan(args.target)
+    else:
+        scanner.scan_ports(
+            args.target, ports=args.ports,
+            os_detection=args.os,
+        )
+
+
 def cmd_mitm(config: Config, args: argparse.Namespace) -> None:
     opsec = OpsecEngine(config)
     mitm = MitmModule(config, opsec)
+    dns_spoof = None
+
+    if args.dns_spoof:
+        dns_spoof = DnsSpoofModule(config, opsec)
+        for domain, ip in args.dns_spoof:
+            dns_spoof.add_rule(domain, ip)
 
     def signal_handler(sig, frame):
-        traffic = mitm.stop()
+        mitm.stop()
         mitm.export()
+        if dns_spoof:
+            dns_spoof.stop()
         opsec.cleanup()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
 
     mitm.start(config.interface, args.target, args.gateway)
+
+    if dns_spoof:
+        dns_spoof.start(config.interface)
 
     if args.dashboard:
         mitm.live_dashboard()
@@ -157,11 +222,35 @@ def cmd_mitm(config: Config, args: argparse.Namespace) -> None:
         signal.pause()
 
 
+def cmd_eviltwin(config: Config, args: argparse.Namespace) -> None:
+    opsec = OpsecEngine(config)
+    et = EvilTwinModule(config, opsec)
+
+    twin_config = EvilTwinConfig(
+        essid=args.essid,
+        channel=args.channel,
+        interface=config.interface,
+        encryption="wpa2" if args.wpa else "open",
+        wpa_passphrase=args.wpa,
+        captive_portal=args.captive,
+    )
+
+    def signal_handler(sig, frame):
+        et.stop()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+
+    if et.start(twin_config):
+        console.print("[dim]Press Ctrl+C to stop...[/dim]")
+        signal.pause()
+
+
 def cmd_monitor(config: Config, args: argparse.Namespace) -> None:
     monitor = MonitorModule(config)
 
     def signal_handler(sig, frame):
-        alerts = monitor.stop()
+        monitor.stop()
         monitor.export_alerts()
         sys.exit(0)
 
@@ -176,11 +265,48 @@ def cmd_monitor(config: Config, args: argparse.Namespace) -> None:
         signal.pause()
 
 
+def cmd_threat(config: Config, args: argparse.Namespace) -> None:
+    detector = ThreatDetector(config)
+    indicators = detector.scan_once(config.interface, args.gateway)
+
+    if not indicators:
+        console.print("[green bold]No threats detected — environment appears clean[/green bold]")
+    else:
+        console.print(f"\n[bold]Risk level: {detector.risk_level}[/bold]")
+
+
 def cmd_auto(config: Config, args: argparse.Namespace) -> None:
     console.print("[bold cyan]Starting automated attack chain...[/bold cyan]")
 
     opsec = OpsecEngine(config)
     iface_mgr = InterfaceManager(config.interface)
+    session_mgr = SessionManager()
+    session = None
+
+    if args.resume:
+        session = session_mgr.load(args.resume)
+        if not session:
+            return
+        console.print(f"[green]Resuming from phase: {session.phase}[/green]")
+    elif args.session:
+        session = session_mgr.create(
+            name=args.session,
+            target_bssid=args.target,
+            target_channel=args.channel,
+            stealth_level=config.stealth_level,
+        )
+
+    # Threat check first
+    console.rule("[bold]Phase 0: Threat Assessment[/bold]")
+    detector = ThreatDetector(config)
+
+    def killswitch():
+        console.print("[red bold]KILL SWITCH — aborting all operations[/red bold]")
+        iface_mgr.disable_monitor_mode()
+        opsec.cleanup()
+        sys.exit(1)
+
+    detector.set_killswitch(killswitch)
 
     monitor_iface = iface_mgr.enable_monitor_mode()
     if not monitor_iface:
@@ -189,53 +315,138 @@ def cmd_auto(config: Config, args: argparse.Namespace) -> None:
     scan_data = None
     capture_data = None
     crack_data = None
+    network_data = None
+
+    skip_to = session.phase if session else Phase.INIT.value
 
     try:
         # Phase 1: Recon
-        console.rule("[bold]Phase 1: Reconnaissance[/bold]")
-        recon = ReconModule(config, opsec)
-        recon.scan(monitor_iface, duration=15)
-        scan_data = recon.to_dict()
+        if skip_to in (Phase.INIT.value, Phase.RECON.value):
+            console.rule("[bold]Phase 1: Reconnaissance[/bold]")
+            recon = ReconModule(config, opsec)
+            recon.scan(monitor_iface, duration=15)
+            scan_data = recon.to_dict()
+
+            if session:
+                session_mgr.update_phase(session, Phase.RECON, recon_data=scan_data)
 
         # Phase 2: Capture
-        console.rule("[bold]Phase 2: Capture[/bold]")
-        attack = AttackModule(config, opsec)
-        capture = attack.capture(
-            monitor_iface, args.target, args.channel,
-            client_mac=args.client,
-        )
-        capture_data = {
-            "success": capture.success,
-            "strategy": capture.strategy.value,
-            "file": capture.capture_file,
-        }
-
-        # Phase 3: Crack
-        if capture.success:
-            console.rule("[bold]Phase 3: Cracking[/bold]")
-            result = attack.crack(capture)
-            crack_data = {
-                "success": result.success,
-                "password": result.password,
-                "method": result.method,
+        if skip_to in (Phase.INIT.value, Phase.RECON.value, Phase.CAPTURE.value):
+            console.rule("[bold]Phase 2: Capture[/bold]")
+            attack = AttackModule(config, opsec)
+            capture = attack.capture(
+                monitor_iface, args.target, args.channel,
+                client_mac=args.client,
+            )
+            capture_data = {
+                "success": capture.success,
+                "strategy": capture.strategy.value,
+                "file": capture.capture_file,
             }
 
-            if result.success:
-                console.print(f"\n[green bold]Password found: {result.password}[/green bold]")
+            if session:
+                session_mgr.update_phase(
+                    session, Phase.CAPTURE,
+                    captured_file=capture.capture_file,
+                    capture_strategy=capture.strategy.value,
+                )
+
+            # Phase 3: Crack
+            if capture.success:
+                console.rule("[bold]Phase 3: Cracking[/bold]")
+                result = attack.crack(capture)
+                crack_data = {
+                    "success": result.success,
+                    "password": result.password,
+                    "method": result.method,
+                }
+
+                if result.success:
+                    console.print(f"\n[green bold]Password found: {result.password}[/green bold]")
+
+                if session:
+                    session_mgr.update_phase(
+                        session, Phase.CRACK,
+                        cracked_password=result.password,
+                        crack_method=result.method,
+                    )
+
+        # Phase 4: Network scan (if we cracked the password)
+        if crack_data and crack_data.get("success"):
+            iface_mgr.disable_monitor_mode()
+
+            console.rule("[bold]Phase 4: Network Enumeration[/bold]")
+            scanner = ScannerModule(config, opsec)
+            gateway = _detect_gateway()
+            if gateway:
+                subnet = ".".join(gateway.split(".")[:3]) + ".0/24"
+                scanner.discover_hosts(subnet)
+                network_data = scanner.to_dict()
+
+                if session:
+                    session_mgr.update_phase(
+                        session, Phase.ACCESS,
+                        network_hosts=network_data.get("hosts"),
+                    )
 
         # Report
         console.rule("[bold]Report[/bold]")
-        generate_report(
+        report_path = generate_report(
             scan_data=scan_data,
             capture_data=capture_data,
             crack_data=crack_data,
             fmt=config.report_format,
             output_dir=config.report_dir,
         )
+        console.print(f"[green]Report saved: {report_path}[/green]")
 
+        if session:
+            session_mgr.update_phase(session, Phase.COMPLETE)
+            session_mgr.display(session)
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted — saving state...[/yellow]")
+        if session:
+            session_mgr.save(session)
+            console.print(f"[green]Session saved: {session.id}[/green]")
+            console.print(f"[dim]Resume with: voidfreq auto --resume {session.id}[/dim]")
     finally:
         iface_mgr.disable_monitor_mode()
         opsec.cleanup()
+
+
+def _detect_gateway() -> str | None:
+    import subprocess
+    result = subprocess.run(
+        ["ip", "route", "show", "default"],
+        capture_output=True, text=True,
+    )
+    parts = result.stdout.split()
+    if "via" in parts:
+        idx = parts.index("via")
+        if idx + 1 < len(parts):
+            return parts[idx + 1]
+    return None
+
+
+def cmd_session(config: Config, args: argparse.Namespace) -> None:
+    mgr = SessionManager()
+
+    if args.list:
+        mgr.list_sessions()
+    elif args.show:
+        session = mgr.load(args.show)
+        if session:
+            mgr.display(session)
+    elif args.delete:
+        mgr.delete(args.delete)
+    elif args.export:
+        session = mgr.load(args.export)
+        if session:
+            path = mgr.export_report(session)
+            console.print(f"[green]Report exported: {path}[/green]")
+    else:
+        mgr.list_sessions()
 
 
 def cmd_opsec(config: Config, args: argparse.Namespace) -> None:
@@ -275,7 +486,6 @@ def main() -> None:
         config.stealth_level = args.stealth
         profiles = config.raw.get("voidfreq", {}).get("stealth_profiles", {})
         profile_data = profiles.get(args.stealth, {})
-        from .core.config import StealthProfile
         config.stealth = StealthProfile(**{
             k: v for k, v in profile_data.items()
             if k in StealthProfile.__dataclass_fields__
@@ -284,15 +494,19 @@ def main() -> None:
     commands = {
         "recon": cmd_recon,
         "attack": cmd_attack,
+        "scan": cmd_scan,
         "mitm": cmd_mitm,
+        "eviltwin": cmd_eviltwin,
         "monitor": cmd_monitor,
+        "threat": cmd_threat,
         "auto": cmd_auto,
+        "session": cmd_session,
         "opsec": cmd_opsec,
         "check": cmd_check,
     }
 
     if args.command in commands:
-        if args.command not in ("check", "opsec"):
+        if args.command not in ("check", "opsec", "session"):
             if not check_root():
                 sys.exit(1)
         commands[args.command](config, args)

@@ -11,9 +11,9 @@
    ╚═══╝   ╚═════╝ ╚═╝╚═════╝ ╚═╝     ╚═╝  ╚═╝╚══════╝ ╚══▀▀═╝
 ```
 
-VoidFreq wraps aircrack-ng, hcxdumptool, tshark, arpspoof and other industry-standard tools into a single framework with **automatic stealth** at every step. Attack, intercept, and monitor — while minimizing your footprint.
+VoidFreq wraps aircrack-ng, hcxdumptool, tshark, nmap, hostapd, and other industry-standard tools into a single framework with **automatic stealth** at every step. Attack, intercept, and monitor — while minimizing your footprint.
 
-> **⚠️ Legal disclaimer:** This tool is for authorized penetration testing and educational purposes only. Only use it on networks you own or have explicit written permission to test. Unauthorized access to computer networks is illegal.
+> **Legal disclaimer:** This tool is for authorized penetration testing and educational purposes only. Only use it on networks you own or have explicit written permission to test. Unauthorized access to computer networks is illegal.
 
 ## Features
 
@@ -22,14 +22,20 @@ VoidFreq wraps aircrack-ng, hcxdumptool, tshark, arpspoof and other industry-sta
 - **PMKID capture** — silent attack, no deauth required
 - **Passive handshake** — wait for natural reconnects
 - **Targeted deauth** — minimal packets, single client (when stealth allows)
+- **Scapy native packets** — deauth, beacon scan, probe injection, handshake capture without external tools
 - **Auto cracking** — hashcat (GPU) with aircrack-ng fallback
+- **Network scanning** — nmap-based host discovery, port scanning, vulnerability detection, OS fingerprinting
 - **MITM** — ARP spoofing with DNS, SNI, and HTTP traffic capture
+- **DNS spoofing** — redirect specific domains to attacker-controlled IPs
+- **Evil Twin** — rogue AP with DHCP, NAT, optional captive portal, traffic capture
 - **Credential sniffing** — HTTP form data extraction
+- **Hidden SSID reveal** — passive probe response monitoring
 
 ### Blue Team (Defensive)
 - **ARP anomaly detection** — duplicate MAC / IP-MAC change alerts
 - **Deauth flood detection** — windowed frame counting
 - **New device alerts** — unknown MAC notifications
+- **Threat assessment** — detect IDS/WIDS presence (Snort, Suricata, Kismet, enterprise APs)
 - **Live dashboard** — real-time alert monitoring with Rich TUI
 
 ### OPSEC Engine (Always Active)
@@ -37,9 +43,16 @@ VoidFreq wraps aircrack-ng, hcxdumptool, tshark, arpspoof and other industry-sta
 - **Hostname spoofing** — realistic Windows/Android hostnames
 - **Timing jitter** — randomized delays to evade IDS thresholds
 - **Probe suppression** — suppress probe requests in monitor mode
-- **Fingerprint spoofing** — OS fingerprint modification
-- **Kill switch** — auto-stop on detection
-- **Auto-cleanup** — restore MAC, hostname, routes on exit
+- **Fingerprint spoofing** — OS fingerprint modification (TTL, window size)
+- **Stealth scanning** — fragmented packets, decoy IPs, zombie scans
+- **Threat detection** — IDS port scanning, enterprise AP identification
+- **Kill switch** — auto-stop when defensive systems detected
+- **Auto-cleanup** — restore MAC, hostname, routes, iptables on exit
+
+### Session Management
+- **Save/resume** — interrupt and resume pentest sessions
+- **Phase tracking** — automatic progress through recon → capture → crack → access → mitm
+- **Session export** — generate pentest reports from saved sessions
 
 ## Installation
 
@@ -49,10 +62,10 @@ VoidFreq wraps aircrack-ng, hcxdumptool, tshark, arpspoof and other industry-sta
 
 ```bash
 # Kali Linux (most tools pre-installed)
-sudo apt install aircrack-ng hcxdumptool hcxpcapngtool hashcat tshark dsniff nmap
+sudo apt install aircrack-ng hcxdumptool hcxpcapngtool hashcat tshark dsniff nmap hostapd dnsmasq
 
 # Ubuntu/Debian
-sudo apt install aircrack-ng tshark dsniff nmap
+sudo apt install aircrack-ng tshark dsniff nmap hostapd dnsmasq
 # hcxdumptool and hashcat: install from source for latest version
 ```
 
@@ -75,29 +88,105 @@ voidfreq check
 ### Quick start — full automated chain
 
 ```bash
-# Automated recon → capture → crack with high stealth
+# Automated recon → capture → crack → network enum with high stealth
 sudo voidfreq auto -t <AP_BSSID> -ch <CHANNEL> -s high
+
+# With session save (resume if interrupted)
+sudo voidfreq auto -t <AP_BSSID> -ch <CHANNEL> --session "lab_test_1"
+
+# Resume interrupted session
+sudo voidfreq auto --resume <SESSION_ID> -t <AP_BSSID> -ch <CHANNEL>
 ```
 
-### Individual modules
+### Reconnaissance
 
 ```bash
-# Passive reconnaissance (30 seconds)
+# Passive WiFi scan (30 seconds)
 sudo voidfreq recon -d 30
 
-# Attack specific AP (PMKID → passive → deauth fallback)
+# Extended scan (2 minutes)
+sudo voidfreq recon -d 120 -s ghost
+```
+
+### Attack
+
+```bash
+# Attack AP (PMKID → passive → deauth fallback)
 sudo voidfreq attack -t AA:BB:CC:DD:EE:FF -ch 6
 
-# Attack with specific client target, no cracking
+# Target specific client, capture only
 sudo voidfreq attack -t AA:BB:CC:DD:EE:FF -ch 6 --client 11:22:33:44:55:66 --no-crack
+```
 
-# MITM with live dashboard
+### Network scanning
+
+```bash
+# Host discovery
+sudo voidfreq scan -t 192.168.1.0/24 --discover
+
+# Port scan with service detection
+sudo voidfreq scan -t 192.168.1.50 -p 1-65535
+
+# Vulnerability scan
+sudo voidfreq scan -t 192.168.1.50 --vuln
+
+# OS detection
+sudo voidfreq scan -t 192.168.1.50 --os
+```
+
+### MITM
+
+```bash
+# Basic MITM with live dashboard
 sudo voidfreq mitm -t 192.168.1.50 -g 192.168.1.1 --dashboard
 
-# Blue team monitoring with live dashboard
+# MITM with DNS spoofing
+sudo voidfreq mitm -t 192.168.1.50 -g 192.168.1.1 --dns-spoof login.example.com 192.168.1.100
+```
+
+### Evil Twin
+
+```bash
+# Open rogue AP
+sudo voidfreq eviltwin -e "FreeWiFi" -ch 6
+
+# WPA2 clone
+sudo voidfreq eviltwin -e "TargetNetwork" -ch 6 --wpa "password123"
+
+# With captive portal
+sudo voidfreq eviltwin -e "CoffeeShop_WiFi" -ch 1 --captive
+```
+
+### Blue Team
+
+```bash
+# Network monitoring with live dashboard
 sudo voidfreq monitor --dashboard
 
-# OPSEC status
+# Threat assessment (scan for IDS/WIDS)
+sudo voidfreq threat -g 192.168.1.1
+```
+
+### Sessions
+
+```bash
+# List saved sessions
+voidfreq session --list
+
+# Show session details
+voidfreq session --show <SESSION_ID>
+
+# Export session report
+voidfreq session --export <SESSION_ID>
+
+# Delete session
+voidfreq session --delete <SESSION_ID>
+```
+
+### OPSEC
+
+```bash
+# Show OPSEC status
 sudo voidfreq opsec --status
 
 # Restore original state
@@ -106,15 +195,15 @@ sudo voidfreq opsec --cleanup
 
 ### Stealth levels
 
-| Level | MAC Rotate | Jitter | Deauth | Scan Speed | Kill Switch |
-|-------|-----------|--------|--------|------------|-------------|
-| `low` | ❌ | ❌ | ✅ (50 pkts) | Aggressive | ❌ |
-| `medium` | ✅ | ✅ | ✅ (3 pkts) | Normal | ❌ |
-| `high` | ✅ | ✅ | ❌ | Paranoid | ✅ |
-| `ghost` | ✅ | ✅ | ❌ | Stealth | ✅ |
+| Level | MAC Rotate | Jitter | Deauth | Scan Speed | Kill Switch | Decoys |
+|-------|-----------|--------|--------|------------|-------------|--------|
+| `low` | - | - | 50 pkts | Aggressive | - | - |
+| `medium` | yes | yes | 3 pkts | Normal | - | - |
+| `high` | yes | yes | - | Paranoid | yes | - |
+| `ghost` | yes | yes | - | Stealth | yes | yes |
 
 ```bash
-# Override stealth level
+# Override stealth level for any command
 sudo voidfreq auto -t <BSSID> -ch 6 -s ghost
 ```
 
@@ -124,43 +213,28 @@ sudo voidfreq auto -t <BSSID> -ch 6 -s ghost
 voidfreq/
 ├── core/
 │   ├── config.py      # YAML config loader, stealth profiles
-│   ├── interface.py   # Monitor mode, channel control
-│   └── opsec.py       # OPSEC engine — MAC/hostname/jitter/cleanup
+│   ├── interface.py   # Monitor mode, channel control, TX power
+│   ├── opsec.py       # MAC rotation, hostname spoof, jitter, cleanup
+│   ├── session.py     # Save/resume pentest sessions
+│   └── threat.py      # IDS/WIDS detection, kill switch
 ├── modules/
 │   ├── recon.py       # Passive AP/client scanning
 │   ├── attack.py      # PMKID/handshake capture + cracking
+│   ├── scanner.py     # nmap host/port/vuln scanning
 │   ├── mitm.py        # ARP spoof + DNS/SNI/HTTP capture
-│   └── monitor.py     # Blue team detection & alerting
+│   ├── dnsspoof.py    # DNS spoofing with iptables redirect
+│   ├── eviltwin.py    # Rogue AP (hostapd + dnsmasq + NAT)
+│   ├── monitor.py     # Blue team detection & alerting
+│   └── packets.py     # Native Scapy packet operations
 ├── utils/
 │   ├── deps.py        # Dependency checker
 │   └── report.py      # Markdown/JSON report generator
-└── cli.py             # CLI entry point
+└── cli.py             # CLI entry point with Rich TUI
 ```
 
 ## Configuration
 
-Edit `config.yaml` to customize behavior:
-
-```yaml
-voidfreq:
-  interface: wlan0
-  stealth: high
-
-  cracking:
-    wordlist: /usr/share/wordlists/rockyou.txt
-    use_hashcat: true
-
-  mitm:
-    arp_rate: 0.5
-    fullduplex: true
-    capture: [dns, sni, http_credentials]
-
-  monitor:
-    arp_anomaly: true
-    deauth_detection: true
-    rogue_ap_detection: true
-    new_device_alert: true
-```
+Edit `config.yaml` to customize behavior. See the included default config for all options.
 
 ## Recommended Lab Setup
 
@@ -168,6 +242,8 @@ voidfreq:
 2. **Attacker** — Kali Linux + external WiFi adapter (monitor mode capable)
 3. **Target** — old phone/laptop on the network
 4. **Monitoring** — second terminal running `voidfreq monitor --dashboard`
+
+Run both sides simultaneously: attack from one terminal, watch detections from another.
 
 ## License
 
