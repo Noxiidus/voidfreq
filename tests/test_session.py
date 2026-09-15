@@ -1,13 +1,10 @@
 """Tests for session management."""
 
-import json
-import os
-import tempfile
 from unittest.mock import patch
 
 import pytest
 
-from voidfreq.core.session import SessionManager, SessionData, Phase
+from voidfreq.core.session import Phase, SessionData, SessionManager
 
 
 @pytest.fixture

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -174,10 +175,8 @@ class ProxyModule:
         self._cleanup_redirect()
 
         for path in (self._script_path, self._log_path):
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(path)
-            except FileNotFoundError:
-                pass
 
         console.print(
             f"[yellow]Proxy stopped — {len(self.capture.requests)} requests, "

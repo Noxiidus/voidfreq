@@ -1,9 +1,6 @@
 """Tests for OPSEC engine."""
 
-from unittest.mock import patch, MagicMock
-import subprocess
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from voidfreq.core.config import Config, StealthProfile
 from voidfreq.core.opsec import OpsecEngine, OpsecState, _random_hex, _random_hostname

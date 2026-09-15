@@ -3,9 +3,7 @@
 import os
 import tempfile
 
-import pytest
-
-from voidfreq.modules.wordlist import WordlistGenerator, WordlistConfig
+from voidfreq.modules.wordlist import WordlistConfig, WordlistGenerator
 
 
 def test_basic_generation():

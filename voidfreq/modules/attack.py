@@ -13,8 +13,8 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from ..core.config import Config
-from ..core.opsec import OpsecEngine
 from ..core.logger import get_logger
+from ..core.opsec import OpsecEngine
 
 console = Console()
 log = get_logger("attack")

@@ -6,7 +6,6 @@ import tempfile
 import pytest
 
 from voidfreq.core.config import (
-    Config,
     ConfigError,
     StealthProfile,
     load_config,

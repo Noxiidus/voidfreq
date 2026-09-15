@@ -1,10 +1,8 @@
 """Tests for logger setup."""
 
 import logging
-import os
-from unittest.mock import patch
 
-from voidfreq.core.logger import get_logger, LOG_DIR
+from voidfreq.core.logger import get_logger
 
 
 def test_get_logger_returns_logger():

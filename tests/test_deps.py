@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from voidfreq.utils.deps import check_dependencies, REQUIRED, OPTIONAL
+from voidfreq.utils.deps import OPTIONAL, REQUIRED, check_dependencies
 
 
 @patch("voidfreq.utils.deps.shutil.which")

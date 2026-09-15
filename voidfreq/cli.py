@@ -26,7 +26,7 @@ from .modules.karma import KarmaConfig, KarmaModule
 from .modules.mitm import MitmModule
 from .modules.monitor import MonitorModule
 from .modules.osint import OsintModule
-from .modules.packets import detect_client_isolation, detect_pmf
+from .modules.packets import detect_pmf
 from .modules.proxy import ProxyModule
 from .modules.recon import ReconModule
 from .modules.scanner import ScannerModule
