@@ -1,6 +1,6 @@
 # VoidFreq Roadmap
 
-> Current version: **v0.6.1** — 37 Python files, ~8200 lines, 176 unit tests, CI pipeline active.
+> Current version: **v0.7.0** — 40 Python files, ~9800 lines, 202 unit tests, CI pipeline active.
 
 ---
 
@@ -38,7 +38,7 @@
 - Auto-cleanup (MAC, hostname, routes, iptables restore)
 
 **Infrastructure:**
-- CLI with 20 subcommands (including `doctor`, `check`, `wps`, `proxy`, `karma`, `osint`, `pmf`)
+- CLI with 22 subcommands (including `doctor`, `check`, `wps`, `proxy`, `karma`, `osint`, `pmf`, `wpa3`, `enterprise`)
 - YAML config with 4 stealth profiles (low/medium/high/ghost)
 - Config validation with clear error messages
 - Session management (save/resume/export pentest sessions)
@@ -46,7 +46,7 @@
 - Central subprocess runner with logging, timeout, and error reporting
 - `--verbose` / `--quiet` CLI flags for console output level
 - Doctor mode (tool versions, WiFi interfaces, kernel modules, Python packages, feature map)
-- 165 unit tests (all modules, CLI, report, captive portal, config, integration tests)
+- 202 unit tests (all modules, CLI, report, captive portal, config, integration tests)
 - GitHub Actions CI (ruff lint + pytest on Python 3.11/3.12/3.13)
 - pyproject.toml with `[dev]` extras
 - Markdown/JSON report generation
@@ -165,33 +165,33 @@ Full codebase audit of 37 Python files (~8200 lines). 23 bugs fixed across 18 fi
 
 ---
 
-## Phase 2: Protocol Coverage (v0.7.0)
+## Phase 2: Protocol Coverage (v0.7.0) — DONE
 
 Priority: support modern WiFi security standards.
 
 ### WPA3 / SAE support
-- [ ] SAE handshake detection and capture
-- [ ] Dragonblood attack vectors (CVE-2019-9494, CVE-2019-9496)
-- [ ] SAE side-channel timing attacks
-- [ ] WPA3 transition mode downgrade detection
-- [ ] Update attack strategy selection: if WPA3 detected, skip deauth, try SAE-specific vectors
+- [x] SAE handshake detection and capture (RSN IE parsing, AKM suite detection)
+- [x] Dragonblood attack vectors (CVE-2019-9494 timing, CVE-2019-9496 group downgrade)
+- [x] SAE side-channel timing attacks (response time variance analysis)
+- [x] WPA3 transition mode downgrade detection and attack
+- [x] Update attack strategy selection: WPA3_DOWNGRADE strategy, SAE-only early return
 
 ### 802.1X / Enterprise WiFi
-- [ ] EAP type detection (PEAP, EAP-TLS, EAP-TTLS, LEAP)
-- [ ] Fake RADIUS server for credential capture
-- [ ] Certificate impersonation for EAP-PEAP
-- [ ] `hostapd-wpe` integration for enterprise evil twin
-- [ ] GTC downgrade attack
+- [x] EAP type detection (PEAP, EAP-TLS, EAP-TTLS, GTC, MD5) via Scapy + tshark fallback
+- [x] Fake RADIUS server for credential capture (hostapd-wpe integration)
+- [x] Certificate impersonation for EAP-PEAP (hostapd-wpe certs)
+- [x] `hostapd-wpe` integration for enterprise evil twin
+- [x] GTC downgrade attack (cleartext password capture)
 
 ### Deauth evasion (IDS bypass)
-- [ ] Randomized reason codes in deauth frames
-- [ ] Fragmented deauth with inter-frame jitter
-- [ ] Client-side disassociation instead of deauth (different frame type, often not monitored)
-- [ ] Rate-limiting awareness — stay below common IDS thresholds (e.g., 10 frames/sec)
+- [x] Randomized reason codes in deauth frames (pool of 15 valid codes)
+- [x] Inter-frame jitter (random delay between frames)
+- [x] Client-side disassociation instead of deauth (Dot11Disas frames)
+- [x] Rate-limiting awareness — configurable rate limit, mixed method cycling
 
 ---
 
-## Phase 3: Advanced Features (v0.6.0)
+## Phase 3: Advanced Features (v0.8.0)
 
 Priority: extend beyond WiFi into broader wireless and network features.
 
@@ -298,12 +298,14 @@ voidfreq/
 │   ├── recon.py        # ReconModule: airodump-ng wrapper with CSV parsing
 │   ├── scanner.py      # ScannerModule: nmap wrapper (host/port/vuln/OS)
 │   ├── wordlist.py     # WordlistGenerator: ESSID-based with leet/years/patterns/walks
+│   ├── wpa3.py         # Wpa3Module: SAE detection, Dragonblood attacks, transition downgrade
+│   ├── enterprise.py   # EnterpriseModule: EAP detection, hostapd-wpe evil twin, GTC downgrade
 │   └── wps.py          # WpsModule: wash scan, Pixie Dust (reaver/bully), PIN brute-force
 ├── utils/
 │   ├── deps.py         # check_dependencies() + doctor() full system diagnostic
 │   └── report.py       # Markdown/JSON pentest report generation
 ├── cli.py              # argparse CLI, 20 subcommands, banner, command dispatch
-└── __init__.py         # __version__ = "0.6.1", __author__ = "Noxiidus"
+└── __init__.py         # __version__ = "0.7.0", __author__ = "Noxiidus"
 ```
 
 ### Key patterns
