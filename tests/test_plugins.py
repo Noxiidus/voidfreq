@@ -139,6 +139,52 @@ class TestPluginLoading:
             plugin.call_hook("pre_operation")
 
 
+class TestDependencyCheck:
+    def test_missing_dependency_rejected(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin_dir = Path(tmpdir) / "plugins"
+            plugin_dir.mkdir()
+
+            my_plugin = plugin_dir / "dep_test"
+            my_plugin.mkdir()
+
+            (my_plugin / "manifest.yaml").write_text(
+                "name: dep_test\n"
+                "version: '1.0.0'\n"
+                "dependencies:\n  - nonexistent_module_xyz_12345\n"
+            )
+
+            (my_plugin / "plugin.py").write_text("pass\n")
+
+            mgr = PluginManager(plugin_dir=plugin_dir)
+            plugins = mgr.load_all()
+            assert len(plugins) == 0
+
+    def test_valid_dependency_accepted(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plugin_dir = Path(tmpdir) / "plugins"
+            plugin_dir.mkdir()
+
+            my_plugin = plugin_dir / "dep_ok"
+            my_plugin.mkdir()
+
+            (my_plugin / "manifest.yaml").write_text(
+                "name: dep_ok\n"
+                "version: '1.0.0'\n"
+                "dependencies:\n  - json\n"
+            )
+
+            (my_plugin / "plugin.py").write_text("pass\n")
+
+            mgr = PluginManager(plugin_dir=plugin_dir)
+            plugins = mgr.load_all()
+            assert len(plugins) == 1
+
+
 class TestPluginManager:
     def test_load_all_empty(self):
         mgr = PluginManager(plugin_dir=Path("/nonexistent"))

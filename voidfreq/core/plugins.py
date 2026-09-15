@@ -228,7 +228,8 @@ class PluginManager:
     def _check_dependencies(self, manifest: PluginManifest) -> bool:
         for dep in manifest.dependencies:
             try:
-                importlib.util.find_spec(dep)
+                if importlib.util.find_spec(dep) is None:
+                    return False
             except (ModuleNotFoundError, ValueError):
                 return False
         return True

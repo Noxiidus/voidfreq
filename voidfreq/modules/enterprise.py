@@ -128,6 +128,7 @@ class EnterpriseModule:
 
     def _detect_eap_tshark(self, interface: str, bssid: str, duration: int, info: EapInfo) -> None:
         pcap_file = os.path.join(tempfile.gettempdir(), f"eap_detect_{int(time.time())}.pcap")
+        proc = None
         try:
             proc = subprocess.Popen(
                 ["sudo", "tshark",

@@ -151,12 +151,15 @@ def decrypt_data(encrypted_json: str, password: str) -> str | None:
 
     key, _ = derive_key(password, salt)
 
+    if not encrypted:
+        expected_hmac = hashlib.pbkdf2_hmac("sha256", key, b"", 1)
+        if expected_hmac != stored_hmac:
+            return None
+        return ""
+
     expected_hmac = hashlib.pbkdf2_hmac("sha256", key, encrypted, 1)
     if expected_hmac != stored_hmac:
         return None
-
-    if not encrypted:
-        return ""
 
     xor_stream = hashlib.pbkdf2_hmac(
         "sha256", key, salt + b"stream", 1, dklen=len(encrypted),

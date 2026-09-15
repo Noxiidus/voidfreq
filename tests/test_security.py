@@ -103,6 +103,11 @@ class TestEncryption:
         decrypted = decrypt_data(encrypted, "password")
         assert decrypted == ""
 
+    def test_empty_data_wrong_password(self):
+        encrypted = encrypt_data("", "correct")
+        result = decrypt_data(encrypted, "wrong")
+        assert result is None
+
     def test_unicode_data(self):
         original = "Jelszó: tesztelés 🔐"
         encrypted = encrypt_data(original, "kulcs")

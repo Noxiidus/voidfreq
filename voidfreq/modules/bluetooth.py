@@ -248,7 +248,11 @@ class BluetoothModule:
             proc.stdin.write("scan off\nquit\n")
             proc.stdin.flush()
             stdout, _ = proc.communicate(timeout=10)
-        except (FileNotFoundError, subprocess.TimeoutExpired, BrokenPipeError):
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            return devices
+        except (FileNotFoundError, BrokenPipeError):
             return devices
 
         seen: set[str] = set()
