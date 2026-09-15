@@ -13,13 +13,16 @@ from rich.panel import Panel
 from rich.text import Text
 
 from . import __version__
+from .core.alerts import AlertManager
 from .core.config import Config, StealthProfile, load_config
 from .core.interface import InterfaceManager
 from .core.opsec import OpsecEngine
+from .core.plugins import PluginManager
 from .core.session import Phase, SessionManager
 from .core.threat import ThreatDetector
 from .modules.analyzer import PcapAnalyzer
 from .modules.attack import AttackModule
+from .modules.bluetooth import BluetoothModule
 from .modules.captive import CaptivePortal
 from .modules.dnsspoof import DnsSpoofModule
 from .modules.enterprise import EnterpriseModule
@@ -80,6 +83,11 @@ examples:
   voidfreq wpa3 downgrade -t AA:BB:CC:DD:EE:FF -ch 6 # Transition mode downgrade
   voidfreq enterprise detect -t AA:BB:CC:DD:EE:FF    # EAP type detection
   voidfreq enterprise wpe -e CorpWiFi -ch 6           # Enterprise evil twin
+  voidfreq bt ble -d 30                               # BLE device scan
+  voidfreq bt classic                                 # Bluetooth Classic scan
+  voidfreq bt gatt AA:BB:CC:DD:EE:FF                  # GATT service enumeration
+  voidfreq plugin list                                # List installed plugins
+  voidfreq tui                                        # Interactive full-screen TUI
   voidfreq -v attack -t ... -ch 6 --pmf-check        # Verbose + PMF check
   voidfreq doctor                                    # System diagnostic
 """,
@@ -279,6 +287,41 @@ examples:
     ent_gtc.add_argument("-d", "--duration", type=int, default=300, help="Capture duration")
     ent_gtc.add_argument("-o", "--output", default="./captures", help="Output directory")
 
+    # bluetooth
+    bt = sub.add_parser("bt", help="Bluetooth recon — BLE scanning, Classic scan, GATT enumeration")
+    bt_sub = bt.add_subparsers(dest="bt_action")
+
+    bt_ble = bt_sub.add_parser("ble", help="Scan for BLE devices")
+    bt_ble.add_argument("-d", "--duration", type=int, default=15, help="Scan duration (seconds)")
+    bt_ble.add_argument("--hci", default="hci0", help="HCI interface (default: hci0)")
+
+    bt_classic = bt_sub.add_parser("classic", help="Scan for Bluetooth Classic devices")
+    bt_classic.add_argument("-d", "--duration", type=int, default=15, help="Scan duration (seconds)")
+    bt_classic.add_argument("--hci", default="hci0", help="HCI interface (default: hci0)")
+
+    bt_gatt = bt_sub.add_parser("gatt", help="Enumerate GATT services on a BLE device")
+    bt_gatt.add_argument("address", help="BLE device address (AA:BB:CC:DD:EE:FF)")
+    bt_gatt.add_argument("--hci", default="hci0", help="HCI interface (default: hci0)")
+
+    bt_prox = bt_sub.add_parser("proximity", help="Track BLE device signal strength over time")
+    bt_prox.add_argument("address", help="Device address to track")
+    bt_prox.add_argument("-d", "--duration", type=int, default=60, help="Track duration (seconds)")
+    bt_prox.add_argument("--hci", default="hci0", help="HCI interface (default: hci0)")
+
+    # plugin
+    plug = sub.add_parser("plugin", help="Plugin management")
+    plug_sub = plug.add_subparsers(dest="plugin_action")
+
+    plug_sub.add_parser("list", help="List installed plugins")
+
+    plug_run = plug_sub.add_parser("run", help="Run a plugin command")
+    plug_run.add_argument("plugin_name", help="Plugin name")
+    plug_run.add_argument("plugin_command", help="Command to run")
+    plug_run.add_argument("plugin_args", nargs="*", help="Arguments for the command")
+
+    # tui
+    sub.add_parser("tui", help="Interactive full-screen terminal UI")
+
     return parser
 
 
@@ -423,7 +466,8 @@ def cmd_eviltwin(config: Config, args: argparse.Namespace) -> None:
 
 
 def cmd_monitor(config: Config, args: argparse.Namespace) -> None:
-    monitor = MonitorModule(config)
+    alert_mgr = AlertManager.from_config(config.raw)
+    monitor = MonitorModule(config, alert_manager=alert_mgr)
 
     stop_event = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: stop_event.set())
@@ -891,6 +935,43 @@ def cmd_enterprise(config: Config, args: argparse.Namespace) -> None:
         console.print("[yellow]Usage: voidfreq enterprise {detect|wpe|gtc}[/yellow]")
 
 
+def cmd_bt(config: Config, args: argparse.Namespace) -> None:
+    opsec = OpsecEngine(config)
+    bt = BluetoothModule(config, opsec)
+
+    hci = getattr(args, "hci", "hci0")
+
+    if args.bt_action == "ble":
+        bt.scan_ble(duration=args.duration, interface=hci)
+    elif args.bt_action == "classic":
+        bt.scan_classic(duration=args.duration, interface=hci)
+    elif args.bt_action == "gatt":
+        bt.enumerate_gatt(args.address, interface=hci)
+    elif args.bt_action == "proximity":
+        bt.proximity_track(args.address, duration=args.duration, interface=hci)
+    else:
+        console.print("[yellow]Usage: voidfreq bt {ble|classic|gatt|proximity}[/yellow]")
+
+
+def cmd_plugin(config: Config, args: argparse.Namespace) -> None:
+    mgr = PluginManager()
+
+    if args.plugin_action == "list":
+        mgr.load_all()
+        mgr.list_plugins()
+    elif args.plugin_action == "run":
+        mgr.load_all()
+        if not mgr.run_command(args.plugin_name, args.plugin_command, args.plugin_args):
+            console.print(f"[red]Plugin '{args.plugin_name}' not found[/red]")
+    else:
+        mgr.list_plugins()
+
+
+def cmd_tui(config: Config, args: argparse.Namespace) -> None:
+    from .tui import run_tui
+    run_tui(config)
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -939,9 +1020,12 @@ def main() -> None:
         "pmf": cmd_pmf,
         "wpa3": cmd_wpa3,
         "enterprise": cmd_enterprise,
+        "bt": cmd_bt,
+        "plugin": cmd_plugin,
+        "tui": cmd_tui,
     }
 
-    no_root_commands = ("check", "doctor", "opsec", "session", "wordlist", "analyze", "osint")
+    no_root_commands = ("check", "doctor", "opsec", "session", "wordlist", "analyze", "osint", "plugin", "tui")
 
     if args.command in commands:
         if args.command not in no_root_commands and not check_root():

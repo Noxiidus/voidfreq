@@ -37,6 +37,9 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.4.0",
 ]
+tui = [
+    "textual>=0.40.0",
+]
 
 [project.scripts]
 voidfreq = "voidfreq.cli:main"

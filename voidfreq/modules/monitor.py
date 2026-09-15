@@ -31,13 +31,14 @@ class Alert:
 
 
 class MonitorModule:
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, alert_manager=None) -> None:
         self.config = config
         self.alerts: list[Alert] = []
         self.arp_table: dict[str, str] = {}  # IP -> MAC
         self.known_devices: set[str] = set()
         self._running = False
         self._threads: list[threading.Thread] = []
+        self._alert_manager = alert_manager
 
     def start(self, interface: str) -> None:
         log.info("Starting blue team monitoring on %s", interface)
@@ -78,6 +79,19 @@ class MonitorModule:
         colors = {"INFO": "blue", "WARNING": "yellow", "CRITICAL": "red bold"}
         color = colors.get(severity, "white")
         console.print(f"[{color}]⚠ [{severity}] {alert_type}: {message}[/{color}]")
+
+        if self._alert_manager:
+            from ..core.alerts import AlertEvent, AlertSeverity
+            try:
+                sev = AlertSeverity(severity)
+            except ValueError:
+                sev = AlertSeverity.INFO
+            self._alert_manager.send(AlertEvent(
+                severity=sev,
+                alert_type=alert_type,
+                message=message,
+                source=source,
+            ))
 
     def _monitor_arp(self, interface: str) -> None:
         while self._running:
