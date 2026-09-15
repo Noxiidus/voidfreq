@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from logging.handlers import RotatingFileHandler
 
 LOG_DIR = os.path.expanduser("~/.voidfreq/logs")
@@ -12,6 +13,7 @@ MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 BACKUP_COUNT = 5
 
 _console_handler: logging.StreamHandler | None = None
+_lock = threading.Lock()
 
 
 def get_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
@@ -21,23 +23,27 @@ def get_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
     if logger.handlers:
         return logger
 
-    logger.setLevel(level)
+    with _lock:
+        if logger.handlers:
+            return logger
 
-    fh = RotatingFileHandler(
-        LOG_FILE,
-        maxBytes=MAX_BYTES,
-        backupCount=BACKUP_COUNT,
-        encoding="utf-8",
-    )
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(logging.Formatter(
-        "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    ))
-    logger.addHandler(fh)
+        logger.setLevel(level)
 
-    logger.propagate = False
-    return logger
+        fh = RotatingFileHandler(
+            LOG_FILE,
+            maxBytes=MAX_BYTES,
+            backupCount=BACKUP_COUNT,
+            encoding="utf-8",
+        )
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(logging.Formatter(
+            "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        ))
+        logger.addHandler(fh)
+
+        logger.propagate = False
+        return logger
 
 
 def set_console_level(level: int) -> None:

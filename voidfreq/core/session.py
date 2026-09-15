@@ -60,6 +60,13 @@ class SessionManager:
     def __init__(self) -> None:
         os.makedirs(SESSION_DIR, exist_ok=True)
 
+    @staticmethod
+    def _sanitize_name(name: str) -> str:
+        import re
+        clean = re.sub(r'[^a-zA-Z0-9_\-]', '_', name)
+        clean = clean.strip('_.')
+        return clean or "session"
+
     def create(
         self, name: str,
         target_bssid: str = "",
@@ -67,7 +74,8 @@ class SessionManager:
         target_channel: int = 0,
         stealth_level: str = "high",
     ) -> SessionData:
-        session_id = f"{int(time.time())}_{name.lower().replace(' ', '_')}"
+        safe_name = self._sanitize_name(name)
+        session_id = f"{int(time.time())}_{safe_name.lower()}"
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
 
         session = SessionData(
@@ -87,6 +95,9 @@ class SessionManager:
         return session
 
     def load(self, session_id: str) -> SessionData | None:
+        if os.sep in session_id or "/" in session_id or ".." in session_id:
+            console.print("[red]Invalid session ID[/red]")
+            return None
         path = os.path.join(SESSION_DIR, f"{session_id}.json")
         if not os.path.exists(path):
             console.print(f"[red]Session not found: {session_id}[/red]")
@@ -155,6 +166,9 @@ class SessionManager:
         return sessions
 
     def delete(self, session_id: str) -> bool:
+        if os.sep in session_id or "/" in session_id or ".." in session_id:
+            console.print("[red]Invalid session ID[/red]")
+            return False
         path = os.path.join(SESSION_DIR, f"{session_id}.json")
         if os.path.exists(path):
             os.unlink(path)

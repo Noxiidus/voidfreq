@@ -38,6 +38,7 @@ class MitmModule:
         self._threads: list[threading.Thread] = []
         self._arp_proc1: subprocess.Popen | None = None
         self._arp_proc2: subprocess.Popen | None = None
+        self._capture_procs: list[subprocess.Popen] = []
 
     def start(
         self, interface: str, target_ip: str, gateway_ip: str,
@@ -89,6 +90,14 @@ class MitmModule:
                     proc.wait(timeout=5)
                 except Exception:
                     proc.kill()
+
+        for proc in self._capture_procs:
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except Exception:
+                proc.kill()
+        self._capture_procs.clear()
 
         self._disable_ttl_spoof()
         self._disable_ip_forwarding()
@@ -156,6 +165,7 @@ class MitmModule:
             stderr=subprocess.DEVNULL,
             text=True,
         )
+        self._capture_procs.append(proc)
 
         while self._running and proc.poll() is None:
             line = proc.stdout.readline().strip()
@@ -190,6 +200,7 @@ class MitmModule:
             stderr=subprocess.DEVNULL,
             text=True,
         )
+        self._capture_procs.append(proc)
 
         while self._running and proc.poll() is None:
             line = proc.stdout.readline().strip()
@@ -227,6 +238,7 @@ class MitmModule:
             stderr=subprocess.DEVNULL,
             text=True,
         )
+        self._capture_procs.append(proc)
 
         while self._running and proc.poll() is None:
             line = proc.stdout.readline().strip()

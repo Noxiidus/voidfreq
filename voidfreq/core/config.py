@@ -56,7 +56,7 @@ def _validate(raw: dict) -> None:
         raise ConfigError("'voidfreq' key must be a mapping")
 
     stealth = vf.get("stealth")
-    if stealth and stealth not in VALID_STEALTH_LEVELS:
+    if stealth is not None and stealth not in VALID_STEALTH_LEVELS:
         raise ConfigError(
             f"Invalid stealth level '{stealth}' — must be one of {VALID_STEALTH_LEVELS}"
         )
@@ -69,7 +69,7 @@ def _validate(raw: dict) -> None:
         if not isinstance(profile, dict):
             raise ConfigError(f"Stealth profile '{name}' must be a mapping")
         timing = profile.get("scan_timing")
-        if timing and timing not in VALID_SCAN_TIMINGS:
+        if timing is not None and timing not in VALID_SCAN_TIMINGS:
             raise ConfigError(
                 f"Invalid scan_timing '{timing}' in profile '{name}' — "
                 f"must be one of {VALID_SCAN_TIMINGS}"
@@ -90,7 +90,7 @@ def _validate(raw: dict) -> None:
 
     reporting = vf.get("reporting", {})
     fmt = reporting.get("format")
-    if fmt and fmt not in VALID_REPORT_FORMATS:
+    if fmt is not None and fmt not in VALID_REPORT_FORMATS:
         raise ConfigError(
             f"Invalid report format '{fmt}' — must be one of {VALID_REPORT_FORMATS}"
         )

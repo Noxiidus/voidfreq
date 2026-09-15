@@ -103,7 +103,7 @@ class ReconModule:
                     channel=int(parts[3]) if parts[3].strip() else 0,
                     power=int(parts[8]) if parts[8].strip().lstrip("-").isdigit() else -100,
                     encryption=parts[5],
-                    essid=parts[13] if len(parts) > 13 else "",
+                    essid=",".join(parts[13:]).strip().rstrip(",") if len(parts) > 13 else "",
                 )
                 self.access_points.append(ap)
             except (ValueError, IndexError):

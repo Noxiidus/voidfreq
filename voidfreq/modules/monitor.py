@@ -124,18 +124,22 @@ class MonitorModule:
             time.sleep(5)
 
     def _monitor_deauth(self, interface: str) -> None:
-        proc = subprocess.Popen(
-            ["sudo", "tshark",
-             "-i", interface,
-             "-Y", "wlan.fc.type_subtype == 0x0c || wlan.fc.type_subtype == 0x0a",
-             "-T", "fields",
-             "-e", "wlan.sa",
-             "-e", "wlan.da",
-             "-l"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
+        try:
+            proc = subprocess.Popen(
+                ["sudo", "tshark",
+                 "-i", interface,
+                 "-Y", "wlan.fc.type_subtype == 0x0c || wlan.fc.type_subtype == 0x0a",
+                 "-T", "fields",
+                 "-e", "wlan.sa",
+                 "-e", "wlan.da",
+                 "-l"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+        except FileNotFoundError:
+            log.warning("tshark not found — deauth monitoring unavailable")
+            return
 
         deauth_counts: dict[str, int] = defaultdict(int)
         window_start = time.time()
@@ -188,19 +192,23 @@ class MonitorModule:
 
     def _monitor_rogue_ap(self, interface: str) -> None:
         """Detect rogue APs: duplicate SSIDs on different BSSIDs, and Evil Twin (same SSID+channel, different BSSID)."""
-        proc = subprocess.Popen(
-            ["sudo", "tshark",
-             "-i", interface,
-             "-Y", "wlan.fc.type_subtype == 0x08",
-             "-T", "fields",
-             "-e", "wlan.sa",
-             "-e", "wlan.ssid",
-             "-e", "wlan_radio.channel",
-             "-l"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
+        try:
+            proc = subprocess.Popen(
+                ["sudo", "tshark",
+                 "-i", interface,
+                 "-Y", "wlan.fc.type_subtype == 0x08",
+                 "-T", "fields",
+                 "-e", "wlan.sa",
+                 "-e", "wlan.ssid",
+                 "-e", "wlan_radio.channel",
+                 "-l"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+        except FileNotFoundError:
+            log.warning("tshark not found — rogue AP monitoring unavailable")
+            return
 
         ssid_bssids: dict[str, set[str]] = defaultdict(set)
         ssid_channel_bssids: dict[tuple[str, str], set[str]] = defaultdict(set)

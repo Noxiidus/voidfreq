@@ -23,6 +23,9 @@ def run_cmd(
     cmd_str = " ".join(cmd)
     log.debug("Running: %s", cmd_str)
 
+    if "stdout" in kwargs or "stderr" in kwargs:
+        capture = False
+
     try:
         result = subprocess.run(
             cmd,

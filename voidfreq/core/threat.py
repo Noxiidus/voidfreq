@@ -63,7 +63,6 @@ class ThreatDetector:
         "snort",
         "suricata",
         "wids",
-        "ids",
     ]
 
     def __init__(self, config: Config) -> None:
@@ -76,7 +75,7 @@ class ThreatDetector:
         self._killswitch_callback = callback
 
     def scan_once(self, interface: str, gateway_ip: str) -> list[ThreatIndicator]:
-        self.indicators.clear()
+        self.indicators = []
 
         self._check_ids_ports(gateway_ip)
         self._check_enterprise_aps(interface)

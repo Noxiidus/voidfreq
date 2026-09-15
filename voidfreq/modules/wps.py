@@ -50,17 +50,14 @@ class WpsModule:
                 ["wash", "-i", interface, "-s", "-C"],
                 capture_output=True, text=True, timeout=duration + 5,
             )
-        except subprocess.TimeoutExpired:
-            pass
+            output = result.stdout if result.returncode == 0 else ""
+        except subprocess.TimeoutExpired as e:
+            output = e.stdout or ""
         except FileNotFoundError:
             console.print("[red]wash not found — install reaver: sudo apt install reaver[/red]")
             return []
 
         targets: list[WpsTarget] = []
-        try:
-            output = result.stdout if result.returncode == 0 else ""
-        except UnboundLocalError:
-            output = ""
 
         for line in output.strip().split("\n"):
             if not line or line.startswith("Wash") or line.startswith("---") or line.startswith("BSSID"):

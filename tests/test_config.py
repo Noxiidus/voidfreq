@@ -50,18 +50,18 @@ voidfreq:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(content)
         f.flush()
-        try:
-            config = load_config(f.name)
-            assert config.interface == "wlan1"
-            assert config.stealth_level == "medium"
-            assert config.stealth.mac_rotation is True
-            assert config.stealth.timing_jitter is True
-            assert config.stealth.deauth_max_packets == 3
-            assert config.wordlist == "/tmp/test.txt"
-            assert config.use_hashcat is False
-            assert config.report_format == "json"
-        finally:
-            os.unlink(f.name)
+    try:
+        config = load_config(f.name)
+        assert config.interface == "wlan1"
+        assert config.stealth_level == "medium"
+        assert config.stealth.mac_rotation is True
+        assert config.stealth.timing_jitter is True
+        assert config.stealth.deauth_max_packets == 3
+        assert config.wordlist == "/tmp/test.txt"
+        assert config.use_hashcat is False
+        assert config.report_format == "json"
+    finally:
+        os.unlink(f.name)
 
 
 def test_invalid_stealth_level():
@@ -72,11 +72,11 @@ voidfreq:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(content)
         f.flush()
-        try:
-            with pytest.raises(ConfigError, match="Invalid stealth level 'ultra'"):
-                load_config(f.name)
-        finally:
-            os.unlink(f.name)
+    try:
+        with pytest.raises(ConfigError, match="Invalid stealth level 'ultra'"):
+            load_config(f.name)
+    finally:
+        os.unlink(f.name)
 
 
 def test_invalid_scan_timing():
@@ -90,11 +90,11 @@ voidfreq:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(content)
         f.flush()
-        try:
-            with pytest.raises(ConfigError, match="Invalid scan_timing 'turbo'"):
-                load_config(f.name)
-        finally:
-            os.unlink(f.name)
+    try:
+        with pytest.raises(ConfigError, match="Invalid scan_timing 'turbo'"):
+            load_config(f.name)
+    finally:
+        os.unlink(f.name)
 
 
 def test_invalid_deauth_packets():
@@ -108,33 +108,33 @@ voidfreq:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(content)
         f.flush()
-        try:
-            with pytest.raises(ConfigError, match="deauth_max_packets"):
-                load_config(f.name)
-        finally:
-            os.unlink(f.name)
+    try:
+        with pytest.raises(ConfigError, match="deauth_max_packets"):
+            load_config(f.name)
+    finally:
+        os.unlink(f.name)
 
 
 def test_invalid_yaml():
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write("invalid: yaml: [broken")
         f.flush()
-        try:
-            with pytest.raises(ConfigError, match="Failed to parse"):
-                load_config(f.name)
-        finally:
-            os.unlink(f.name)
+    try:
+        with pytest.raises(ConfigError, match="Failed to parse"):
+            load_config(f.name)
+    finally:
+        os.unlink(f.name)
 
 
 def test_non_dict_yaml():
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write("- just\n- a\n- list\n")
         f.flush()
-        try:
-            with pytest.raises(ConfigError, match="must contain a YAML mapping"):
-                load_config(f.name)
-        finally:
-            os.unlink(f.name)
+    try:
+        with pytest.raises(ConfigError, match="must contain a YAML mapping"):
+            load_config(f.name)
+    finally:
+        os.unlink(f.name)
 
 
 def test_invalid_report_format():
@@ -146,22 +146,22 @@ voidfreq:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(content)
         f.flush()
-        try:
-            with pytest.raises(ConfigError, match="Invalid report format 'pdf'"):
-                load_config(f.name)
-        finally:
-            os.unlink(f.name)
+    try:
+        with pytest.raises(ConfigError, match="Invalid report format 'pdf'"):
+            load_config(f.name)
+    finally:
+        os.unlink(f.name)
 
 
 def test_empty_config_file():
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write("")
         f.flush()
-        try:
-            config = load_config(f.name)
-            assert config.interface == "wlan0"
-        finally:
-            os.unlink(f.name)
+    try:
+        config = load_config(f.name)
+        assert config.interface == "wlan0"
+    finally:
+        os.unlink(f.name)
 
 
 def test_config_raw_preserved():
@@ -173,8 +173,8 @@ voidfreq:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(content)
         f.flush()
-        try:
-            config = load_config(f.name)
-            assert config.raw["voidfreq"]["custom_key"] == "custom_value"
-        finally:
-            os.unlink(f.name)
+    try:
+        config = load_config(f.name)
+        assert config.raw["voidfreq"]["custom_key"] == "custom_value"
+    finally:
+        os.unlink(f.name)

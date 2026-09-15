@@ -184,10 +184,13 @@ class PcapAnalyzer:
                     })
 
     def _check_handshakes(self, path: str) -> None:
-        result = subprocess.run(
-            ["aircrack-ng", path],
-            capture_output=True, text=True, timeout=30,
-        )
+        try:
+            result = subprocess.run(
+                ["aircrack-ng", path],
+                capture_output=True, text=True, timeout=30,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return
         for line in result.stdout.split("\n"):
             if "handshake" in line.lower() and "WPA" in line:
                 parts = line.split()

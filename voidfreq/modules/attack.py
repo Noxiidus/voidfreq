@@ -178,7 +178,11 @@ class AttackModule:
 
             time.sleep(30)
             proc.send_signal(signal.SIGINT)
-            proc.wait(timeout=10)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
 
         if not os.path.exists(outfile) or os.path.getsize(outfile) == 0:
             return CaptureResult(
@@ -238,14 +242,22 @@ class AttackModule:
                     )
                     if "1 handshake" in check.stdout:
                         proc.send_signal(signal.SIGINT)
-                        proc.wait(timeout=5)
+                        try:
+                            proc.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                            proc.wait()
                         return CaptureResult(
                             success=True, strategy=AttackStrategy.PASSIVE,
                             capture_file=cap_file,
                         )
 
             proc.send_signal(signal.SIGINT)
-            proc.wait(timeout=5)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
 
         return CaptureResult(
             success=False, strategy=AttackStrategy.PASSIVE,
@@ -290,7 +302,11 @@ class AttackModule:
 
         time.sleep(15)
         dump_proc.send_signal(signal.SIGINT)
-        dump_proc.wait(timeout=5)
+        try:
+            dump_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            dump_proc.kill()
+            dump_proc.wait()
 
         cap_file = f"{prefix}-01.cap"
         if os.path.exists(cap_file):
@@ -365,7 +381,10 @@ class AttackModule:
         if "KEY FOUND!" in result.stdout:
             for line in result.stdout.split("\n"):
                 if "KEY FOUND!" in line:
-                    password = line.split("[")[1].split("]")[0].strip()
+                    try:
+                        password = line.split("[")[1].split("]")[0].strip()
+                    except IndexError:
+                        password = line.split("KEY FOUND!")[-1].strip().strip("[]")
                     return CrackResult(
                         success=True, password=password, method="aircrack-ng",
                     )

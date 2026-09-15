@@ -134,13 +134,13 @@ def scan_beacons(
             return
 
         essid = ""
-        channel = 0
+        pkt_channel = 0
         encryption = "OPEN"
 
         stats = pkt[Dot11Beacon].network_stats()
         if stats:
             essid = stats.get("ssid", "")
-            channel = stats.get("channel", 0)
+            pkt_channel = stats.get("channel", 0)
             crypto = stats.get("crypto", set())
             if crypto:
                 encryption = "/".join(crypto)
@@ -152,13 +152,13 @@ def scan_beacons(
                     essid = elt.info.decode("utf-8", errors="ignore")
             elif elt.ID == 3:
                 with contextlib.suppress(Exception):
-                    channel = int.from_bytes(elt.info, "big")
+                    pkt_channel = int.from_bytes(elt.info, "big")
             elt = elt.payload if hasattr(elt.payload, "ID") else None
 
         power = getattr(pkt, "dBm_AntSignal", -100) if hasattr(pkt, "dBm_AntSignal") else -100
 
         beacons[bssid] = BeaconInfo(
-            bssid=bssid, essid=essid, channel=channel,
+            bssid=bssid, essid=essid, channel=pkt_channel,
             encryption=encryption, power=power,
         )
 

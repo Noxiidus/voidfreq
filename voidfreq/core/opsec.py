@@ -111,6 +111,8 @@ class OpsecEngine:
             return None
 
     def spoof_hostname(self) -> str | None:
+        if not self.profile.fingerprint_spoof:
+            return None
         new_hostname = _random_hostname()
         console.print(f"[dim]OPSEC: hostname → {new_hostname}[/dim]")
 

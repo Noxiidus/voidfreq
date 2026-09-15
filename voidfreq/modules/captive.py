@@ -108,6 +108,7 @@ class CaptivePortal:
 
             def do_POST(self):
                 content_length = int(self.headers.get("Content-Length", 0))
+                content_length = min(content_length, 65536)
                 body = self.rfile.read(content_length).decode()
                 params = parse_qs(body)
 

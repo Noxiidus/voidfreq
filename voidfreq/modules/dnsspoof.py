@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -43,6 +45,7 @@ class DnsSpoofModule:
         self._running = False
         self._proc: subprocess.Popen | None = None
         self._interface: str | None = None
+        self._tmp_files: list[str] = []
 
     def add_rule(self, domain: str, redirect_ip: str, wildcard: bool = False) -> None:
         rule = SpoofRule(domain=domain, redirect_ip=redirect_ip, wildcard=wildcard)
@@ -98,15 +101,19 @@ class DnsSpoofModule:
         self._running = False
         if self._proc:
             self._proc.terminate()
+            try:
+                self._proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait()
             self._proc = None
 
         self._restore_dns()
 
-        import os
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink("/tmp/voidfreq_dns_hosts")
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink("/tmp/voidfreq_dns_extra.conf")
+        for path in self._tmp_files:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(path)
+        self._tmp_files.clear()
 
         console.print(f"[yellow]DNS spoofing stopped — {len(self.spoofed_queries)} queries spoofed[/yellow]")
         return self.spoofed_queries
@@ -122,15 +129,17 @@ class DnsSpoofModule:
 
         hosts_path = None
         if hosts_lines:
-            hosts_path = "/tmp/voidfreq_dns_hosts"
-            with open(hosts_path, "w") as f:
+            fd, hosts_path = tempfile.mkstemp(prefix="voidfreq_dns_", suffix="_hosts")
+            with os.fdopen(fd, "w") as f:
                 f.write("\n".join(hosts_lines) + "\n")
+            self._tmp_files.append(hosts_path)
 
         conf_path = None
         if conf_lines:
-            conf_path = "/tmp/voidfreq_dns_extra.conf"
-            with open(conf_path, "w") as f:
+            fd, conf_path = tempfile.mkstemp(prefix="voidfreq_dns_", suffix=".conf")
+            with os.fdopen(fd, "w") as f:
                 f.write("\n".join(conf_lines) + "\n")
+            self._tmp_files.append(conf_path)
 
         return hosts_path, conf_path
 
@@ -165,13 +174,14 @@ class DnsSpoofModule:
         )
 
     def _monitor_queries(self) -> None:
-        if not self._proc or not self._proc.stdout:
+        proc = self._proc
+        if not proc or not proc.stdout:
             return
 
         spoofed_domains = {r.domain for r in self.rules}
 
-        while self._running and self._proc.poll() is None:
-            line = self._proc.stdout.readline().strip()
+        while self._running and proc.poll() is None:
+            line = proc.stdout.readline().strip()
             if not line or "query" not in line.lower():
                 continue
 

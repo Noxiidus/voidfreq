@@ -27,7 +27,9 @@ def generate_report(
         json_path = os.path.join(output_dir, f"voidfreq_report_{ts}.json")
         _write_json(json_path, scan_data, capture_data, crack_data, traffic_data, alerts_data)
 
-    return os.path.join(output_dir, f"voidfreq_report_{ts}")
+    if fmt == "json":
+        return os.path.join(output_dir, f"voidfreq_report_{ts}.json")
+    return os.path.join(output_dir, f"voidfreq_report_{ts}.md")
 
 
 def _write_markdown(
@@ -88,7 +90,7 @@ def _write_markdown(
         for d in traffic_data.get("dns_queries", []):
             domains.add(d["domain"])
         for s in traffic_data.get("sni_domains", []):
-            domains.add(s["domain"])
+            domains.add(s["domain"] if isinstance(s, dict) else s)
 
         if domains:
             lines.append("### Visited Domains")

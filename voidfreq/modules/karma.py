@@ -267,7 +267,10 @@ class KarmaModule:
         return None
 
     def _start_traffic_capture(self, kc: KarmaConfig, tmpdir: str) -> None:
-        capture_path = os.path.join(tmpdir, "karma_capture.pcap")
+        capture_dir = os.path.expanduser("~/.voidfreq/captures")
+        os.makedirs(capture_dir, exist_ok=True)
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        capture_path = os.path.join(capture_dir, f"karma_capture_{ts}.pcap")
         try:
             proc = subprocess.Popen(
                 ["sudo", "tcpdump", "-i", kc.interface, "-w", capture_path, "-U"],
