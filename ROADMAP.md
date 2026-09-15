@@ -1,6 +1,6 @@
 # VoidFreq Roadmap
 
-> Current version: **v0.6.0** — 37 Python files, ~8200 lines, 165 unit tests, CI pipeline active.
+> Current version: **v0.6.1** — 37 Python files, ~8200 lines, 176 unit tests, CI pipeline active.
 
 ---
 
@@ -126,6 +126,42 @@ Priority: make existing features bullet-proof.
 - [x] `--help` improvements with examples per command (epilog on main parser)
 - [x] `config.yaml` schema documentation (docs/config-schema.md)
 - [x] Lab setup guide with specific hardware recommendations and step-by-step (docs/lab-setup.md)
+
+---
+
+## Phase 1 Bug Hunt (v0.6.1) — DONE
+
+Full codebase audit of 37 Python files (~8200 lines). 23 bugs fixed across 18 files.
+
+### Security fixes
+- [x] Path traversal protection in session load/delete
+- [x] Symlink attack prevention — replaced hardcoded /tmp paths with tempfile.mkstemp in dnsspoof
+- [x] Content-Length memory exhaustion cap (64KB) in captive portal
+- [x] WIDS false positive kill switch — removed generic "ids" from signature list
+
+### Stability fixes
+- [x] Race condition in threat indicator list (atomic reference swap)
+- [x] Double-checked locking for thread-safe logger handler creation
+- [x] Process lifecycle: terminate → wait(timeout) → kill fallback in attack/dnsspoof/mitm
+- [x] Thread-safe proc reference in dnsspoof monitor thread
+- [x] capture_output conflict guard in central runner
+- [x] FileNotFoundError handling in monitor and analyzer modules
+- [x] TimeoutExpired partial output capture in WPS module
+- [x] MITM capture process cleanup on stop
+
+### Correctness fixes
+- [x] None vs falsy config validation (stealth profile checks)
+- [x] ESSID comma-in-name CSV parsing
+- [x] Variable shadowing in packets.py beacon scanner closure
+- [x] aircrack KEY FOUND line parsing fallback
+- [x] SNI domain type handling in report generator
+- [x] Report path now includes file extension
+- [x] opsec spoof_hostname config guard
+- [x] Karma capture written to persistent path instead of tmpdir
+
+### Test fixes
+- [x] Windows PermissionError in test_config temp file cleanup
+- [x] 176 tests passing, ruff clean
 
 ---
 
@@ -267,7 +303,7 @@ voidfreq/
 │   ├── deps.py         # check_dependencies() + doctor() full system diagnostic
 │   └── report.py       # Markdown/JSON pentest report generation
 ├── cli.py              # argparse CLI, 20 subcommands, banner, command dispatch
-└── __init__.py         # __version__ = "0.6.0", __author__ = "Noxiidus"
+└── __init__.py         # __version__ = "0.6.1", __author__ = "Noxiidus"
 ```
 
 ### Key patterns
