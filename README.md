@@ -28,7 +28,10 @@ VoidFreq wraps aircrack-ng, hcxdumptool, tshark, nmap, hostapd, and other indust
 - **MITM** — ARP spoofing with DNS, SNI, and HTTP traffic capture
 - **DNS spoofing** — redirect specific domains to attacker-controlled IPs
 - **Evil Twin** — rogue AP with DHCP, NAT, optional captive portal, traffic capture
+- **Captive portal** — credential harvesting HTTP server with custom templates
 - **Credential sniffing** — HTTP form data extraction
+- **Targeted wordlist generator** — ESSID-based wordlist with leet speak, years, common patterns
+- **Pcap analyzer** — offline capture file analysis (DNS, SNI, HTTP, credentials, handshakes)
 - **Hidden SSID reveal** — passive probe response monitoring
 
 ### Blue Team (Defensive)
@@ -183,6 +186,29 @@ voidfreq session --export <SESSION_ID>
 voidfreq session --delete <SESSION_ID>
 ```
 
+### Wordlist generator
+
+```bash
+# Generate targeted wordlist from ESSID
+voidfreq wordlist -e "CoffeeShop_WiFi"
+
+# With custom words and output path
+voidfreq wordlist -e "CompanyNet" --words admin root guest -o custom_wordlist.txt
+
+# Skip leet speak variants for a smaller list
+voidfreq wordlist -e "HomeNetwork" --no-leet --no-years
+```
+
+### Pcap analyzer
+
+```bash
+# Analyze a capture file
+voidfreq analyze capture.pcap
+
+# Analyze and export results to JSON
+voidfreq analyze capture.pcapng --export
+```
+
 ### OPSEC
 
 ```bash
@@ -225,7 +251,10 @@ voidfreq/
 │   ├── dnsspoof.py    # DNS spoofing with iptables redirect
 │   ├── eviltwin.py    # Rogue AP (hostapd + dnsmasq + NAT)
 │   ├── monitor.py     # Blue team detection & alerting
-│   └── packets.py     # Native Scapy packet operations
+│   ├── packets.py     # Native Scapy packet operations
+│   ├── captive.py     # Captive portal credential harvesting
+│   ├── wordlist.py    # ESSID-based wordlist generator
+│   └── analyzer.py    # Offline pcap capture analysis
 ├── utils/
 │   ├── deps.py        # Dependency checker
 │   └── report.py      # Markdown/JSON report generator

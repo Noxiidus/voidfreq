@@ -23,6 +23,9 @@ from .modules.monitor import MonitorModule
 from .modules.scanner import ScannerModule
 from .modules.eviltwin import EvilTwinModule, EvilTwinConfig
 from .modules.dnsspoof import DnsSpoofModule
+from .modules.captive import CaptivePortal
+from .modules.wordlist import WordlistGenerator, WordlistConfig
+from .modules.analyzer import PcapAnalyzer
 from .utils.deps import check_dependencies, check_root, check_interface
 from .utils.report import generate_report
 
@@ -117,6 +120,21 @@ def build_parser() -> argparse.ArgumentParser:
     session.add_argument("--show", help="Show session details by ID")
     session.add_argument("--delete", help="Delete session by ID")
     session.add_argument("--export", help="Export session report by ID")
+
+    # wordlist
+    wl = sub.add_parser("wordlist", help="Generate targeted wordlist from ESSID")
+    wl.add_argument("-e", "--essid", required=True, help="Target ESSID")
+    wl.add_argument("-o", "--output", help="Output file path")
+    wl.add_argument("--no-leet", action="store_true", help="Skip leet speak variants")
+    wl.add_argument("--no-years", action="store_true", help="Skip year variants")
+    wl.add_argument("--words", nargs="+", help="Extra custom words to include")
+    wl.add_argument("--min-len", type=int, default=8, help="Minimum password length")
+    wl.add_argument("--max-len", type=int, default=63, help="Maximum password length")
+
+    # analyze
+    az = sub.add_parser("analyze", help="Analyze a pcap capture file offline")
+    az.add_argument("file", help="Path to .pcap/.pcapng file")
+    az.add_argument("--export", action="store_true", help="Export analysis to JSON")
 
     # opsec
     opsec = sub.add_parser("opsec", help="OPSEC status and cleanup")
@@ -225,6 +243,7 @@ def cmd_mitm(config: Config, args: argparse.Namespace) -> None:
 def cmd_eviltwin(config: Config, args: argparse.Namespace) -> None:
     opsec = OpsecEngine(config)
     et = EvilTwinModule(config, opsec)
+    portal = None
 
     twin_config = EvilTwinConfig(
         essid=args.essid,
@@ -236,12 +255,19 @@ def cmd_eviltwin(config: Config, args: argparse.Namespace) -> None:
     )
 
     def signal_handler(sig, frame):
+        if portal:
+            portal.export()
+            portal.stop()
         et.stop()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
 
     if et.start(twin_config):
+        if args.captive:
+            portal = CaptivePortal(listen_ip=twin_config.gateway_ip)
+            portal.start()
+
         console.print("[dim]Press Ctrl+C to stop...[/dim]")
         signal.pause()
 
@@ -468,6 +494,28 @@ def cmd_opsec(config: Config, args: argparse.Namespace) -> None:
         console.print(table)
 
 
+def cmd_wordlist(config: Config, args: argparse.Namespace) -> None:
+    wl_config = WordlistConfig(
+        essid=args.essid,
+        include_leet=not args.no_leet,
+        include_years=not args.no_years,
+        min_length=args.min_len,
+        max_length=args.max_len,
+        custom_words=args.words,
+    )
+    gen = WordlistGenerator(wl_config)
+    gen.generate()
+    path = gen.save(args.output)
+    console.print(f"\n[dim]Use with: voidfreq attack -t <BSSID> -ch <CH> -w {path}[/dim]")
+
+
+def cmd_analyze(config: Config, args: argparse.Namespace) -> None:
+    analyzer = PcapAnalyzer()
+    analyzer.analyze(args.file)
+    if args.export:
+        analyzer.export()
+
+
 def cmd_check(config: Config, args: argparse.Namespace) -> None:
     check_dependencies()
 
@@ -501,12 +549,16 @@ def main() -> None:
         "threat": cmd_threat,
         "auto": cmd_auto,
         "session": cmd_session,
+        "wordlist": cmd_wordlist,
+        "analyze": cmd_analyze,
         "opsec": cmd_opsec,
         "check": cmd_check,
     }
 
+    no_root_commands = ("check", "opsec", "session", "wordlist", "analyze")
+
     if args.command in commands:
-        if args.command not in ("check", "opsec", "session"):
+        if args.command not in no_root_commands:
             if not check_root():
                 sys.exit(1)
         commands[args.command](config, args)
