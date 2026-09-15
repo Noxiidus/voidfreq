@@ -10,8 +10,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 
 console = Console()
 
@@ -200,7 +200,7 @@ class PcapAnalyzer:
             "-T", "fields",
             "-e", "frame.number",
         ])
-        self.analysis.deauth_frames = len([l for l in output.strip().split("\n") if l.strip()])
+        self.analysis.deauth_frames = len([line for line in output.strip().split("\n") if line.strip()])
 
     def _extract_beacons(self, path: str) -> None:
         output = self._run_tshark([

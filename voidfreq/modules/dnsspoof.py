@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from rich.console import Console
 from rich.table import Table
@@ -93,10 +94,8 @@ class DnsSpoofModule:
         self._restore_dns()
 
         import os
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink("/tmp/voidfreq_dns_hosts")
-        except FileNotFoundError:
-            pass
 
         console.print(f"[yellow]DNS spoofing stopped — {len(self.spoofed_queries)} queries spoofed[/yellow]")
         return self.spoofed_queries

@@ -5,8 +5,8 @@ from __future__ import annotations
 import subprocess
 import threading
 import time
-from dataclasses import dataclass, field
 from collections import defaultdict
+from dataclasses import dataclass
 
 from rich.console import Console
 from rich.live import Live

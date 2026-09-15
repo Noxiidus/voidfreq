@@ -10,8 +10,10 @@ from dataclasses import dataclass, field
 from rich.console import Console
 
 from .config import Config
+from .logger import get_logger
 
 console = Console()
+log = get_logger("opsec")
 
 COMMON_VENDORS = [
     "00:1A:2B",  # Ayecom
@@ -74,10 +76,12 @@ class OpsecEngine:
             match = re.search(r"link/ether\s+([0-9a-f:]{17})", result.stdout)
             if match:
                 self.state.original_mac = match.group(1)
+                log.info("Saved original MAC: %s", self.state.original_mac)
 
         result = self._run(["hostname"], check=False)
         if result.returncode == 0:
             self.state.original_hostname = result.stdout.strip()
+            log.info("Saved original hostname: %s", self.state.original_hostname)
 
     def rotate_mac(self) -> str | None:
         if not self.profile.mac_rotation:
@@ -99,8 +103,10 @@ class OpsecEngine:
         if result.returncode == 0:
             self.state.current_mac = new_mac
             self.state.modifications.append(f"mac:{new_mac}")
+            log.info("MAC rotated to %s", new_mac)
             return new_mac
         else:
+            log.error("MAC rotation failed: %s", result.stderr.strip())
             console.print(f"[red]OPSEC: MAC rotation failed: {result.stderr.strip()}[/red]")
             return None
 
@@ -132,6 +138,7 @@ class OpsecEngine:
 
     def cleanup(self) -> None:
         """Restore everything to original state."""
+        log.info("Starting cleanup")
         console.print("[yellow]OPSEC: cleaning up...[/yellow]")
 
         if self.state.original_mac:

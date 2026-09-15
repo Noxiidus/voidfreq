@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
-import re
 import subprocess
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from rich.console import Console
 
 from .config import Config
+from .logger import get_logger
 
 console = Console()
+log = get_logger("threat")
 
 
 @dataclass
@@ -107,6 +108,7 @@ class ThreatDetector:
             details=details,
         )
         self.indicators.append(indicator)
+        log.warning("Threat: [%s] %s — %s", confidence.upper(), threat_type, details)
 
         color = {"high": "red bold", "medium": "yellow", "low": "dim"}.get(confidence, "white")
         console.print(f"[{color}]THREAT: [{confidence.upper()}] {threat_type} — {details}[/{color}]")
@@ -117,7 +119,7 @@ class ThreatDetector:
                 self._killswitch_callback()
 
     def _check_ids_ports(self, gateway_ip: str) -> None:
-        ports = ",".join(str(p) for p in self.KNOWN_IDS_PORTS.keys())
+        ports = ",".join(str(p) for p in self.KNOWN_IDS_PORTS)
         result = subprocess.run(
             ["nmap", "-sT", "-p", ports, "--open", "-T4", gateway_ip, "-oX", "-"],
             capture_output=True, text=True, timeout=30,

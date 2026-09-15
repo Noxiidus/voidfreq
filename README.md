@@ -86,6 +86,14 @@ pip install -e .
 voidfreq check
 ```
 
+### Full system diagnostic
+
+```bash
+voidfreq doctor
+```
+
+Checks tool versions + paths, WiFi interfaces, kernel modules, Python packages, config validation, and feature availability. Run this before your first operation.
+
 ## Usage
 
 ### Quick start — full automated chain

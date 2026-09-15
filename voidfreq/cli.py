@@ -11,22 +11,22 @@ from rich.panel import Panel
 from rich.text import Text
 
 from . import __version__
-from .core.config import load_config, Config, StealthProfile
+from .core.config import Config, StealthProfile, load_config
 from .core.interface import InterfaceManager
 from .core.opsec import OpsecEngine
-from .core.session import SessionManager, Phase
+from .core.session import Phase, SessionManager
 from .core.threat import ThreatDetector
-from .modules.recon import ReconModule
+from .modules.analyzer import PcapAnalyzer
 from .modules.attack import AttackModule
+from .modules.captive import CaptivePortal
+from .modules.dnsspoof import DnsSpoofModule
+from .modules.eviltwin import EvilTwinConfig, EvilTwinModule
 from .modules.mitm import MitmModule
 from .modules.monitor import MonitorModule
+from .modules.recon import ReconModule
 from .modules.scanner import ScannerModule
-from .modules.eviltwin import EvilTwinModule, EvilTwinConfig
-from .modules.dnsspoof import DnsSpoofModule
-from .modules.captive import CaptivePortal
-from .modules.wordlist import WordlistGenerator, WordlistConfig
-from .modules.analyzer import PcapAnalyzer
-from .utils.deps import check_dependencies, check_root, check_interface
+from .modules.wordlist import WordlistConfig, WordlistGenerator
+from .utils.deps import check_dependencies, check_root, doctor
 from .utils.report import generate_report
 
 console = Console()
@@ -143,6 +143,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     # check
     sub.add_parser("check", help="Check dependencies and system readiness")
+
+    # doctor
+    sub.add_parser("doctor", help="Full system diagnostic — tools, versions, interfaces, config")
 
     return parser
 
@@ -520,6 +523,10 @@ def cmd_check(config: Config, args: argparse.Namespace) -> None:
     check_dependencies()
 
 
+def cmd_doctor(config: Config, args: argparse.Namespace) -> None:
+    doctor()
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -553,14 +560,14 @@ def main() -> None:
         "analyze": cmd_analyze,
         "opsec": cmd_opsec,
         "check": cmd_check,
+        "doctor": cmd_doctor,
     }
 
-    no_root_commands = ("check", "opsec", "session", "wordlist", "analyze")
+    no_root_commands = ("check", "doctor", "opsec", "session", "wordlist", "analyze")
 
     if args.command in commands:
-        if args.command not in no_root_commands:
-            if not check_root():
-                sys.exit(1)
+        if args.command not in no_root_commands and not check_root():
+            sys.exit(1)
         commands[args.command](config, args)
     else:
         parser.print_help()

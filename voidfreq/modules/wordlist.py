@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import itertools
 import os
-import time
 from dataclasses import dataclass
 
 from rich.console import Console
@@ -206,7 +205,7 @@ class WordlistGenerator:
 
         for combo in itertools.product(*[opts for _, opts in positions]):
             chars = list(word)
-            for (pos, _), replacement in zip(positions, combo):
+            for (pos, _), replacement in zip(positions, combo, strict=False):
                 chars[pos] = replacement
             result = "".join(chars)
             self.words.add(result)

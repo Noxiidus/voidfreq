@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import os
 import time
-from dataclasses import dataclass, field, asdict
-from enum import Enum
+from dataclasses import asdict, dataclass, field
+from enum import StrEnum
 from pathlib import Path
 
 from rich.console import Console
@@ -17,7 +17,7 @@ console = Console()
 SESSION_DIR = os.path.expanduser("~/.voidfreq/sessions")
 
 
-class Phase(str, Enum):
+class Phase(StrEnum):
     INIT = "init"
     RECON = "recon"
     CAPTURE = "capture"
@@ -164,7 +164,6 @@ class SessionManager:
 
     def display(self, session: SessionData) -> None:
         from rich.panel import Panel
-        from rich.text import Text
 
         lines = [
             f"[bold]Name:[/bold] {session.name}",
