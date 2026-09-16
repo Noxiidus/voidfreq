@@ -1,6 +1,6 @@
 # VoidFreq Roadmap
 
-> Current version: **v1.0.0** — 48 Python files, ~12750 lines, 295 unit tests, CI pipeline active.
+> Current version: **v1.0.0** — 48 Python files, ~12750 lines, 298 unit tests, CI pipeline active.
 
 ---
 
@@ -46,7 +46,7 @@
 - Central subprocess runner with logging, timeout, and error reporting
 - `--verbose` / `--quiet` CLI flags for console output level
 - Doctor mode (tool versions, WiFi interfaces, kernel modules, Python packages, feature map)
-- 295 unit tests (all modules, CLI, report, captive portal, config, integration tests)
+- 298 unit tests (all modules, CLI, report, captive portal, config, integration tests)
 - GitHub Actions CI (ruff lint + pytest on Python 3.11/3.12/3.13)
 - pyproject.toml with `[dev]` extras
 - Markdown/JSON report generation
@@ -165,7 +165,30 @@ Full codebase audit of 37 Python files (~8200 lines). 23 bugs fixed across 18 fi
 
 ---
 
-## Phase 2: Protocol Coverage (v0.7.0) — DONE
+## Deep Bug Hunt #2 (v1.0.0) — DONE
+
+Full codebase audit of 30+ files before v1.0.0 release. 9 bugs fixed across 9 files total (4 in first hunt + 5 in deep hunt).
+
+### First hunt (4 bugs)
+- [x] plugins.py — `find_spec()` returns None for missing modules instead of raising; deps silently accepted
+- [x] enterprise.py — `proc` unbound if `Popen` raises `FileNotFoundError`; crash in except block
+- [x] bluetooth.py — `_scan_ble_bluetoothctl` process leak on `TimeoutExpired` (no kill/wait)
+- [x] security.py — empty-data encrypt/decrypt HMAC bypass after adding shortcut path
+
+### Deep hunt (5 bugs)
+- [x] eviltwin.py — `stop()` zombie process: `proc.kill()` without `proc.wait()`
+- [x] karma.py — same zombie process leak in `stop()`
+- [x] proxy.py — same zombie process leak in `stop()`
+- [x] wps.py — `brute_force()` `proc.wait(timeout=5)` unhandled `TimeoutExpired`; reaver left running
+- [x] scanner.py — `scan_ports()` `subprocess.run(timeout=600)` unhandled `TimeoutExpired`; crash on long nmap scan
+
+### Tests added
+- [x] test_plugins.py — missing dep rejected, valid dep accepted
+- [x] test_security.py — empty data wrong password returns None
+
+---
+
+
 
 Priority: support modern WiFi security standards.
 
