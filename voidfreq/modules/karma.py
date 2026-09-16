@@ -105,6 +105,7 @@ class KarmaModule:
                 proc.wait(timeout=5)
             except Exception:
                 proc.kill()
+                proc.wait()
         self._procs.clear()
 
         for rule in self._iptables_rules:

@@ -91,6 +91,7 @@ class EvilTwinModule:
                 proc.wait(timeout=5)
             except Exception:
                 proc.kill()
+                proc.wait()
 
         self._procs.clear()
 

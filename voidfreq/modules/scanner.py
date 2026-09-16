@@ -103,7 +103,11 @@ class ScannerModule:
         if vuln_scan:
             cmd.extend(["--script", "vuln"])
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            console.print("[red]Port scan timed out (10 min limit)[/red]")
+            return None
         if result.returncode not in (0, 1):
             console.print(f"[red]Port scan failed: {result.stderr}[/red]")
             return None

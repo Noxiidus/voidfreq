@@ -156,7 +156,11 @@ class WpsModule:
 
         if proc.poll() is None:
             proc.terminate()
-            proc.wait(timeout=5)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
 
         if pin:
             log.info("WPS PIN found: %s, password: %s", pin, password or "N/A")

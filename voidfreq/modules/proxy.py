@@ -170,6 +170,7 @@ class ProxyModule:
                 self._proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self._proc.kill()
+                self._proc.wait()
             self._proc = None
 
         self._cleanup_redirect()
