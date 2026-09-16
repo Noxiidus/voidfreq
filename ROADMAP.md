@@ -1,6 +1,6 @@
 # VoidFreq Roadmap
 
-> Current version: **v1.0.0** — 48 Python files, ~12750 lines, 298 unit tests, CI pipeline active.
+> Current version: **v1.0.0** — 48 Python files, ~12750 lines, 298 unit tests, CI pipeline active, virtual WiFi E2E tested.
 
 ---
 
@@ -185,6 +185,37 @@ Full codebase audit of 30+ files before v1.0.0 release. 9 bugs fixed across 9 fi
 ### Tests added
 - [x] test_plugins.py — missing dep rejected, valid dep accepted
 - [x] test_security.py — empty data wrong password returns None
+
+---
+
+## Virtual WiFi E2E Test (v1.0.0) — DONE
+
+Full end-to-end integration test using `mac80211_hwsim` virtual WiFi radios on custom WSL2 kernel. No physical adapter required — all packet injection and capture happens between two kernel-simulated radios (wlan0/wlan1).
+
+### Custom kernel setup
+- [x] Built custom WSL2 kernel from `linux-msft-wsl-6.18.y` with `CONFIG_MAC80211_HWSIM=m`
+- [x] Deployed via `.wslconfig` → `vmlinux-voidfreq` (393MB)
+- [x] `modprobe mac80211_hwsim radios=2` creates wlan0 + wlan1
+- [x] Monitor mode via `iw dev wlanX set type monitor` (airmon-ng incompatible with hwsim)
+
+### Scapy packet injection (wlan0 → wlan1)
+- [x] Beacon injection — 20/20 frames received cross-radio
+- [x] Airodump-ng capture — 2 fake APs detected (27 beacons each in CSV)
+
+### voidfreq module tests (12/12 pass)
+- [x] `packets.deauth` — 6 deauth frames injected (unicast + bidirectional)
+- [x] `packets.deauth_broadcast` — 5 broadcast deauth frames
+- [x] `packets.deauth_evasion` — randomized/disassoc/mixed methods (10 frames total)
+- [x] `packets.inject_probe_request` — probe request sent with random source MAC
+- [x] `packets.scan_beacons` — 2 unique APs captured on wlan1 from wlan0 beacons
+- [x] `packets.detect_pmf` — RSN IE parsed, PMF caps bits correctly read (0x0000)
+- [x] `packets.detect_client_isolation` — inter-client traffic test functional
+- [x] `MonitorModule` — blue team module init with Config injection
+- [x] `DnsSpoofModule` — DNS spoof module init with Config + OpsecEngine
+- [x] `generate_report` — report utility import and invocation
+
+### Known limitation
+- `airmon-ng` does not recognize `mac80211_hwsim` interfaces — monitor mode must be set manually with `iw`. The `InterfaceManager` could add an `iw` fallback for virtual/hwsim radios in a future update.
 
 ---
 
